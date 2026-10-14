@@ -9,6 +9,7 @@ const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
 const messageEl = document.getElementById('message');
 const messageText = document.getElementById('message-text');
+const gameStatusEl = document.getElementById('game-status');
 const continueBtn = document.getElementById('continue-btn');
 const retryBtn = document.getElementById('retry-btn');
 const undoBtn = document.getElementById('undo-btn');
@@ -127,18 +128,29 @@ function undo() {
   state.over = false;
   hideMessage();
   render();
+  gameStatusEl.textContent = 'Move undone.';
 }
 
 function render() {
   boardEl.innerHTML = '';
   for (let r = 0; r < SIZE; r++) {
+    const row = document.createElement('div');
+    row.className = 'board-row';
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', r + 1);
+    boardEl.appendChild(row);
     for (let c = 0; c < SIZE; c++) {
       const cell = document.createElement('div');
       cell.className = 'cell';
       const value = state.grid[r][c];
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-colindex', c + 1);
+      cell.setAttribute('aria-label', `Row ${r + 1}, column ${c + 1}: ${value || 'empty'}`);
+      row.appendChild(cell);
       if (value) {
         const tile = document.createElement('div');
         tile.className = `tile tile-${value}`;
+        tile.setAttribute('aria-hidden', 'true');
         if (state.newTile && state.newTile.r === r && state.newTile.c === c) {
           tile.classList.add('tile-new');
         }
@@ -149,10 +161,11 @@ function render() {
           tile.style.fontSize = `${tile.offsetWidth * 0.45}px`;
         }
       }
-      boardEl.appendChild(cell);
     }
   }
-  scoreEl.textContent = state.score;
+  if (scoreEl.textContent !== String(state.score)) {
+    scoreEl.textContent = state.score;
+  }
   bestEl.textContent = state.best;
   undoBtn.disabled = state.history.length === 0;
 }
@@ -161,6 +174,7 @@ function showMessage(text, canContinue) {
   messageText.textContent = text;
   continueBtn.hidden = !canContinue;
   messageEl.classList.remove('hidden');
+  gameStatusEl.textContent = `${text} ${canContinue ? 'Choose Keep going to continue or Try again to start a new game.' : 'Choose Try again to start a new game.'}`;
 }
 
 function hideMessage() {
@@ -178,6 +192,7 @@ function newGame() {
   addRandomTile();
   addRandomTile();
   render();
+  gameStatusEl.textContent = 'New game started.';
 }
 
 const KEY_DIRECTIONS = {
@@ -227,6 +242,7 @@ boardEl.addEventListener('touchend', (event) => {
 continueBtn.addEventListener('click', () => {
   state.keepPlaying = true;
   hideMessage();
+  gameStatusEl.textContent = 'Keep playing to reach a higher tile.';
 });
 retryBtn.addEventListener('click', newGame);
 newBtn.addEventListener('click', newGame);
