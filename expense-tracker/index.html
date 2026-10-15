@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Expense Tracker | Fantastic Journey</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="model.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <a href="../index.html">&larr; All samples</a>
+      <h1>Expense Tracker</h1>
+      <p>Small expenses, clearly tracked. All amounts are in USD.</p>
+      <p class="notice">Browser-local demo: data stays in this browser, not in a shared account.
+        Clearing site data removes it. Use fictional data and export anything you want to keep.</p>
+    </header>
+
+    <noscript><p class="error">Enable JavaScript to use the expense tracker.</p></noscript>
+    <p id="error" class="error" role="alert" hidden></p>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <div class="layout">
+      <section class="panel" aria-labelledby="form-title">
+        <h2 id="form-title">Add expense</h2>
+        <form id="expense-form">
+          <fieldset id="entry-fields">
+            <legend class="sr-only">Expense details</legend>
+            <label for="description">Description</label>
+            <input id="description" name="description" required maxlength="120" autocomplete="off">
+
+            <label for="date">Date</label>
+            <input id="date" name="date" type="date" required min="1000-01-01" max="9999-12-31">
+
+            <label for="category">Category</label>
+            <select id="category" name="category" required>
+              <option value="">Choose a category</option>
+              <option>Supplies</option>
+              <option>Travel</option>
+              <option>Meals</option>
+              <option>Software</option>
+              <option>Other</option>
+            </select>
+
+            <label for="amount">Amount (USD)</label>
+            <input id="amount" name="amount" type="text" inputmode="decimal"
+              required maxlength="9" pattern="[0-9]{1,6}(\.[0-9]{1,2})?"
+              aria-describedby="amount-help" placeholder="0.00">
+            <small id="amount-help">Enter 0.01 to 999999.99, with no commas and at most two decimal places.</small>
+
+            <div class="actions">
+              <button id="save" type="submit" class="primary">Add expense</button>
+              <button id="cancel" type="button" hidden>Cancel edit</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+
+      <section class="panel ledger" aria-labelledby="ledger-title">
+        <h2 id="ledger-title">Your expenses</h2>
+        <div class="filters">
+          <div>
+            <label for="month-filter">Month</label>
+            <input id="month-filter" type="month" min="1000-01" max="9999-12">
+          </div>
+          <div>
+            <label for="category-filter">Category</label>
+            <select id="category-filter">
+              <option value="">All categories</option>
+              <option>Supplies</option>
+              <option>Travel</option>
+              <option>Meals</option>
+              <option>Software</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <button id="all-expenses" type="button">Show all</button>
+        </div>
+        <p class="hint">Starts with the current month. Clear the month or choose Show all to see every date.</p>
+
+        <div class="summary">
+          <div><span>Filtered total</span><strong id="total">$0.00</strong></div>
+          <div><span>Matching entries</span><strong id="count">0</strong></div>
+        </div>
+        <h3>Spending by category <span class="hint">(current filters)</span></h3>
+        <ul id="breakdown" class="breakdown"></ul>
+        <p id="empty">No expenses yet. Add your first expense to get started.</p>
+
+        <div id="table-wrap" class="table-wrap" role="region" aria-label="Expense table" tabindex="0" hidden>
+          <table>
+            <caption class="sr-only">Expenses matching the current filters, newest date first</caption>
+            <thead>
+              <tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th>
+                <th scope="col" class="money">Amount (USD)</th><th scope="col">Actions</th></tr>
+            </thead>
+            <tbody id="expenses"></tbody>
+          </table>
+        </div>
+        <div class="actions export-actions">
+          <button id="export-filtered" type="button" disabled>Export filtered CSV</button>
+          <button id="export-all" type="button" disabled>Export all CSV</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
