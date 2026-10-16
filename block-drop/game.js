@@ -61,6 +61,8 @@ const state = {
   particles: [],
 };
 
+let animationFrameId = null;
+
 function createBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 }
@@ -392,10 +394,14 @@ function update(time = 0) {
 
   updateParticles(delta);
   draw();
-  requestAnimationFrame(update);
+  animationFrameId = requestAnimationFrame(update);
 }
 
 function startGame() {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+  }
+
   state.board = createBoard();
   state.score = 0;
   state.lines = 0;
@@ -412,7 +418,7 @@ function startGame() {
   pauseBtn.innerHTML = '&#10074;&#10074;';
 
   document.addEventListener('keydown', (event) => handleKey(event));
-  requestAnimationFrame(update);
+  animationFrameId = requestAnimationFrame(update);
 }
 
 startBtn.addEventListener('click', () => {

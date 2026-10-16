@@ -10,6 +10,17 @@ Open `index.html` in a browser. You can also serve the repository root:
 npx serve .
 ```
 
+## Tests
+
+With Node.js 18 or newer, run the dependency-free regression tests from the repository root:
+
+```bash
+node --test block-drop/game.test.cjs
+```
+
+The tests simulate animation frames to check that repeated restarts keep one
+update and draw per frame, including pause/resume and starting after game over.
+
 ## Controls
 
 | Key | Action |
