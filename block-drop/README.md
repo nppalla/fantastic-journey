@@ -10,6 +10,8 @@ Open `index.html` in a browser. You can also serve the repository root:
 npx serve .
 ```
 
+Restarting resets the game while keeping a single update/render loop.
+
 ## Controls
 
 | Key | Action |
