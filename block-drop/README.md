@@ -1,6 +1,8 @@
 # Block Drop
 
-A falling-blocks puzzle game for the browser. It uses one `<canvas>` and plain JavaScript.
+A falling-blocks puzzle game for the browser. It uses board and next-piece preview canvases and plain JavaScript.
+
+Both canvases scale their rendering resolution to the display's pixel density while keeping their layout size unchanged. Resolution updates when the browser zoom or display pixel density changes.
 
 ## Run
 

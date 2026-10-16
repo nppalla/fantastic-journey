@@ -4,6 +4,9 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const BOARD_WIDTH = COLS * BLOCK;
+const BOARD_HEIGHT = ROWS * BLOCK;
+const PREVIEW_SIZE = 120;
 
 const COLORS = {
   I: '#38bdf8',
@@ -30,11 +33,10 @@ const LINE_SCORES = [0, 100, 300, 500, 800];
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
-canvas.width = COLS * BLOCK;
-canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
+let resolutionQuery;
 
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
@@ -60,6 +62,27 @@ const state = {
   over: false,
   particles: [],
 };
+
+function resizeCanvases() {
+  const ratio = window.devicePixelRatio || 1;
+  for (const [surface, context, width, height] of [
+    [canvas, ctx, BOARD_WIDTH, BOARD_HEIGHT],
+    [nextCanvas, nextCtx, PREVIEW_SIZE, PREVIEW_SIZE],
+  ]) {
+    surface.width = Math.round(width * ratio);
+    surface.height = Math.round(height * ratio);
+    surface.style.width = `${width}px`;
+    surface.style.height = `${height}px`;
+    context.setTransform(surface.width / width, 0, 0, surface.height / height, 0, 0);
+  }
+
+  draw();
+  if (state.nextType) drawNext();
+
+  if (resolutionQuery) resolutionQuery.removeEventListener('change', resizeCanvases);
+  resolutionQuery = window.matchMedia(`(resolution: ${ratio}dppx)`);
+  resolutionQuery.addEventListener('change', resizeCanvases);
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
@@ -191,7 +214,7 @@ function spawnParticles(row) {
   const colors = Object.values(COLORS);
   for (let i = 0; i < 40; i++) {
     state.particles.push({
-      x: Math.random() * canvas.width,
+      x: Math.random() * BOARD_WIDTH,
       y: row * BLOCK + BLOCK / 2,
       vx: (Math.random() - 0.5) * 0.4,
       vy: (Math.random() - 0.8) * 0.4,
@@ -241,13 +264,13 @@ function drawGrid() {
   for (let x = 1; x < COLS; x++) {
     ctx.beginPath();
     ctx.moveTo(x * BLOCK + 0.5, 0);
-    ctx.lineTo(x * BLOCK + 0.5, canvas.height);
+    ctx.lineTo(x * BLOCK + 0.5, BOARD_HEIGHT);
     ctx.stroke();
   }
   for (let y = 1; y < ROWS; y++) {
     ctx.beginPath();
     ctx.moveTo(0, y * BLOCK + 0.5);
-    ctx.lineTo(canvas.width, y * BLOCK + 0.5);
+    ctx.lineTo(BOARD_WIDTH, y * BLOCK + 0.5);
     ctx.stroke();
   }
 }
@@ -274,7 +297,7 @@ function drawParticles() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
   drawGrid();
 
   state.board.forEach((row, y) => {
@@ -292,7 +315,7 @@ function draw() {
 }
 
 function drawNext() {
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  nextCtx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
   const shape = SHAPES[state.nextType];
 
   // Center the filled cells, not the whole matrix, so I and O sit in the middle.
@@ -300,8 +323,8 @@ function drawNext() {
   const filledCols = shape[0].map((_, x) => (shape.some((row) => row[x]) ? x : -1)).filter((x) => x >= 0);
   const width = filledCols.length * PREVIEW_BLOCK;
   const height = filledRows.length * PREVIEW_BLOCK;
-  const offsetX = (nextCanvas.width - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
-  const offsetY = (nextCanvas.height - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
+  const offsetX = (PREVIEW_SIZE - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
+  const offsetY = (PREVIEW_SIZE - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
 
   shape.forEach((row, y) => {
     row.forEach((filled, x) => {
@@ -424,6 +447,7 @@ startBtn.addEventListener('click', () => {
 });
 pauseBtn.addEventListener('click', togglePause);
 restartBtn.addEventListener('click', startGame);
+window.addEventListener('resize', resizeCanvases);
 
 state.board = createBoard();
-draw();
+resizeCanvases();
