@@ -24,7 +24,7 @@ npx serve .
 
 - Fill a full row to clear it.
 - Every 10 cleared lines raises the level by one.
-- Each level makes pieces fall faster.
+- Pieces fall every 1000 ms at level 1, speeding up by 100 ms per level to a minimum interval of 100 ms at level 10 and above.
 - The game ends when a new piece cannot enter the board.
 
 ## Scoring
@@ -38,6 +38,16 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Tests
+
+With Node.js 18 or newer, run from the repository root:
+
+```bash
+node --test block-drop/drop-interval.test.js
+```
+
+These dependency-free checks cover level-based intervals, automatic drop timing, manual soft drops, and paused games.
+
 ## Files
 
 | File | Purpose |
@@ -45,3 +55,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `drop-interval.test.js` | Regression checks for drop intervals and game-loop timing |
