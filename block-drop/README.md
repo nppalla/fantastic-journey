@@ -10,6 +10,17 @@ Open `index.html` in a browser. You can also serve the repository root:
 npx serve .
 ```
 
+## Tests
+
+With Node.js 18 or newer, run from the repository root:
+
+```bash
+node --test block-drop/game.test.cjs
+```
+
+The regression tests check that repeated restarts keep exactly one update and
+draw per animation frame, including across pause, resume, and game over.
+
 ## Controls
 
 | Key | Action |
@@ -45,3 +56,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `game.test.cjs` | Dependency-free game-loop regression tests |
