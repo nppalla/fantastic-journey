@@ -105,9 +105,9 @@ test('ten immediate restarts leave one update and draw per frame', () => {
   assert.equal(game.frames.size, 1);
   assert.equal(game.cancelledFrames.length, 10);
   assert.equal(game.cancelledFrames[0], 0);
-  for (const time of [1016, 1032, 1048]) {
+  for (let i = 1; i <= 120; i++) {
     const before = game.boardDraws();
-    assert.equal(game.frame(time), 1);
+    assert.equal(game.frame(1000 + i * 16), 1);
     assert.equal(game.boardDraws() - before, 1);
     assert.equal(game.frames.size, 1);
   }
@@ -128,19 +128,29 @@ test('restarts after rendered frames cancel the latest scheduled frame', () => {
   assert.equal(game.frame(1176), 1);
 });
 
-test('restart resets timing so an old session cannot immediately drop a piece', () => {
+test('restart resets game state and timing without immediately dropping a piece', () => {
   const game = createGame();
   game.click('start-btn');
   game.frame(1500);
+  game.evaluate('state.score = 123; state.lines = 5; state.level = 3; state.board[19][0] = "T"; updateStats();');
   game.setTime(10000);
   game.click('restart-btn');
 
   const initialY = game.evaluate('state.piece.y');
+  assert.equal(game.evaluate('state.score'), 0);
+  assert.equal(game.evaluate('state.lines'), 0);
+  assert.equal(game.evaluate('state.level'), 1);
+  assert.equal(game.evaluate('state.board.every((row) => row.every((cell) => cell === null))'), true);
+  assert.equal(game.evaluate('scoreEl.textContent'), '0');
+  assert.equal(game.evaluate('linesEl.textContent'), 0);
+  assert.equal(game.evaluate('levelEl.textContent'), 1);
   assert.equal(game.evaluate('state.dropCounter'), 0);
   assert.equal(game.evaluate('state.lastTime'), 10000);
   assert.equal(game.frame(10016), 1);
   assert.equal(game.evaluate('state.dropCounter'), 16);
   assert.equal(game.evaluate('state.piece.y'), initialY);
+  assert.equal(game.frame(11017), 1);
+  assert.equal(game.evaluate('state.piece.y'), initialY + 1);
 });
 
 test('pause, resume, and restart while paused retain one animation loop', () => {
