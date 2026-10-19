@@ -4,6 +4,9 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const BOARD_WIDTH = COLS * BLOCK;
+const BOARD_HEIGHT = ROWS * BLOCK;
+const PREVIEW_SIZE = 120;
 
 const COLORS = {
   I: '#38bdf8',
@@ -30,8 +33,6 @@ const LINE_SCORES = [0, 100, 300, 500, 800];
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
-canvas.width = COLS * BLOCK;
-canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
@@ -60,6 +61,31 @@ const state = {
   over: false,
   particles: [],
 };
+
+let pixelRatioQuery = null;
+
+function resizeCanvas(surface, context, width, height, ratio) {
+  surface.width = Math.round(width * ratio);
+  surface.height = Math.round(height * ratio);
+  surface.style.width = `${width}px`;
+  surface.style.height = `${height}px`;
+  context.setTransform(surface.width / width, 0, 0, surface.height / height, 0, 0);
+}
+
+function resizeCanvases() {
+  const ratio = window.devicePixelRatio || 1;
+  resizeCanvas(canvas, ctx, BOARD_WIDTH, BOARD_HEIGHT, ratio);
+  resizeCanvas(nextCanvas, nextCtx, PREVIEW_SIZE, PREVIEW_SIZE, ratio);
+
+  if (pixelRatioQuery) {
+    pixelRatioQuery.removeEventListener('change', resizeCanvases);
+  }
+  pixelRatioQuery = window.matchMedia(`(resolution: ${ratio}dppx)`);
+  pixelRatioQuery.addEventListener('change', resizeCanvases);
+
+  draw();
+  if (state.nextType) drawNext();
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
@@ -128,6 +154,7 @@ function hardDrop() {
   }
   state.score += distance * 2;
   lockPiece();
+  updateStats();
   state.dropCounter = 0;
 }
 
@@ -191,7 +218,7 @@ function spawnParticles(row) {
   const colors = Object.values(COLORS);
   for (let i = 0; i < 40; i++) {
     state.particles.push({
-      x: Math.random() * canvas.width,
+      x: Math.random() * BOARD_WIDTH,
       y: row * BLOCK + BLOCK / 2,
       vx: (Math.random() - 0.5) * 0.4,
       vy: (Math.random() - 0.8) * 0.4,
@@ -241,13 +268,13 @@ function drawGrid() {
   for (let x = 1; x < COLS; x++) {
     ctx.beginPath();
     ctx.moveTo(x * BLOCK + 0.5, 0);
-    ctx.lineTo(x * BLOCK + 0.5, canvas.height);
+    ctx.lineTo(x * BLOCK + 0.5, BOARD_HEIGHT);
     ctx.stroke();
   }
   for (let y = 1; y < ROWS; y++) {
     ctx.beginPath();
     ctx.moveTo(0, y * BLOCK + 0.5);
-    ctx.lineTo(canvas.width, y * BLOCK + 0.5);
+    ctx.lineTo(BOARD_WIDTH, y * BLOCK + 0.5);
     ctx.stroke();
   }
 }
@@ -274,7 +301,7 @@ function drawParticles() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
   drawGrid();
 
   state.board.forEach((row, y) => {
@@ -292,16 +319,17 @@ function draw() {
 }
 
 function drawNext() {
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  nextCtx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
   const shape = SHAPES[state.nextType];
+  nextCanvas.setAttribute('aria-label', `Next piece: ${state.nextType}`);
 
   // Center the filled cells, not the whole matrix, so I and O sit in the middle.
   const filledRows = shape.map((row, y) => (row.some(Boolean) ? y : -1)).filter((y) => y >= 0);
   const filledCols = shape[0].map((_, x) => (shape.some((row) => row[x]) ? x : -1)).filter((x) => x >= 0);
   const width = filledCols.length * PREVIEW_BLOCK;
   const height = filledRows.length * PREVIEW_BLOCK;
-  const offsetX = (nextCanvas.width - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
-  const offsetY = (nextCanvas.height - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
+  const offsetX = (PREVIEW_SIZE - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
+  const offsetY = (PREVIEW_SIZE - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
 
   shape.forEach((row, y) => {
     row.forEach((filled, x) => {
@@ -318,42 +346,58 @@ function drawNext() {
 }
 
 function updateStats() {
-  scoreEl.textContent = state.score.toLocaleString();
-  linesEl.textContent = state.lines;
-  levelEl.textContent = state.level;
+  for (const [element, value] of [
+    [scoreEl, state.score.toLocaleString()],
+    [linesEl, String(state.lines)],
+    [levelEl, String(state.level)],
+  ]) {
+    if (element.textContent !== value) element.textContent = value;
+  }
 }
 
-function showOverlay(title, text, buttonLabel) {
+function showOverlay(title, text, buttonSymbol, buttonLabel) {
   overlayTitle.textContent = title;
   overlayText.textContent = text;
-  startBtn.innerHTML = buttonLabel;
+  startBtn.innerHTML = buttonSymbol;
+  startBtn.setAttribute('aria-label', buttonLabel);
   overlay.classList.remove('hidden');
+  startBtn.focus();
 }
 
 function hideOverlay() {
   overlay.classList.add('hidden');
+  canvas.focus();
 }
 
 function togglePause() {
   if (!state.running || state.over) return;
   state.paused = !state.paused;
   if (state.paused) {
-    showOverlay('Paused', 'Press P to resume.', '&#9654;');
+    showOverlay('Paused', 'Press P or choose Resume game to resume.', '&#9654;', 'Resume game');
     pauseBtn.innerHTML = '&#9654;';
+    pauseBtn.setAttribute('aria-label', 'Resume game');
   } else {
     hideOverlay();
     pauseBtn.innerHTML = '&#10074;&#10074;';
+    pauseBtn.setAttribute('aria-label', 'Pause game');
   }
 }
 
 function endGame() {
   state.over = true;
   state.running = false;
-  showOverlay('Game over', `Final score: ${state.score.toLocaleString()}`, '&#10227;');
+  pauseBtn.disabled = true;
+  showOverlay('Game over', `Final score: ${state.score.toLocaleString()}`, '&#10227;', 'Play again');
 }
 
 function handleKey(event) {
-  if (!state.running || state.over) return;
+  if (!state.running || state.over || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.code === 'KeyP') {
+    togglePause();
+    event.preventDefault();
+    return;
+  }
+  if (state.paused || event.target !== canvas) return;
   switch (event.code) {
     case 'ArrowLeft':
       move(-1);
@@ -369,9 +413,6 @@ function handleKey(event) {
       break;
     case 'Space':
       hardDrop();
-      break;
-    case 'KeyP':
-      togglePause();
       break;
     default:
       return;
@@ -409,9 +450,10 @@ function startGame() {
   spawn();
   updateStats();
   hideOverlay();
+  pauseBtn.disabled = false;
   pauseBtn.innerHTML = '&#10074;&#10074;';
+  pauseBtn.setAttribute('aria-label', 'Pause game');
 
-  document.addEventListener('keydown', (event) => handleKey(event));
   requestAnimationFrame(update);
 }
 
@@ -424,6 +466,9 @@ startBtn.addEventListener('click', () => {
 });
 pauseBtn.addEventListener('click', togglePause);
 restartBtn.addEventListener('click', startGame);
+document.addEventListener('keydown', handleKey);
 
 state.board = createBoard();
-draw();
+resizeCanvases();
+window.addEventListener('resize', resizeCanvases);
+startBtn.focus();
