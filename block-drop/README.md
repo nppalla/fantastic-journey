@@ -10,6 +10,18 @@ Open `index.html` in a browser. You can also serve the repository root:
 npx serve .
 ```
 
+The board and next-piece preview keep their logical sizes while their canvas
+backing stores scale with the display's pixel density. They redraw automatically
+when browser zoom or display density changes, without restarting the game.
+
+## Tests
+
+With Node.js 18 or newer, run from the repository root:
+
+```bash
+node --test block-drop/canvas.test.cjs
+```
+
 ## Controls
 
 | Key | Action |
@@ -45,3 +57,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `canvas.test.cjs` | Dependency-free high-DPI canvas regression tests |
