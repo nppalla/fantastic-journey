@@ -20,8 +20,8 @@ node --test block-drop/game.test.cjs
 
 The regression tests check that ten restarts keep exactly one update and draw
 per animation frame for 120 consecutive frames. They also cover pause/resume,
-starting after game over, and resetting game state, displayed stats, and drop
-timing on restart.
+restarting before the first start, repeated starts after game over, and resetting
+game state, displayed stats, and drop timing on restart.
 
 ## Controls
 

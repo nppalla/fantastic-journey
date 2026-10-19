@@ -94,6 +94,27 @@ test('the initial board is drawn without starting an animation loop', () => {
   assert.equal(game.frames.size, 0);
 });
 
+test('restart before first start and repeated starts retain one animation loop', () => {
+  const game = createGame();
+  game.click('restart-btn');
+  assert.equal(game.evaluate('state.running'), true);
+  assert.equal(game.frames.size, 1);
+  assert.equal(game.cancelledFrames.length, 0);
+
+  for (let i = 0; i < 10; i++) {
+    const pendingId = [...game.frames.keys()][0];
+    game.click('start-btn');
+    assert.equal(game.cancelledFrames.at(-1), pendingId);
+    assert.ok(!game.frames.has(pendingId));
+    assert.equal(game.frames.size, 1);
+  }
+
+  const before = game.boardDraws();
+  assert.equal(game.frame(1016), 1);
+  assert.equal(game.boardDraws() - before, 1);
+  assert.equal(game.frames.size, 1);
+});
+
 test('ten immediate restarts leave one update and draw per frame', () => {
   const game = createGame();
   game.click('start-btn');
@@ -185,9 +206,14 @@ test('game over keeps rendering and starting again replaces its pending frame', 
   assert.equal(game.frame(1032), 1);
   assert.equal(game.boardDraws() - before, 1);
 
-  game.click('start-btn');
-  assert.equal(game.evaluate('state.over'), false);
-  assert.equal(game.evaluate('state.running'), true);
-  assert.equal(game.frames.size, 1);
+  for (let i = 0; i < 10; i++) {
+    const pendingId = [...game.frames.keys()][0];
+    game.click('start-btn');
+    assert.equal(game.evaluate('state.over'), false);
+    assert.equal(game.evaluate('state.running'), true);
+    assert.equal(game.cancelledFrames.at(-1), pendingId);
+    assert.ok(!game.frames.has(pendingId));
+    assert.equal(game.frames.size, 1);
+  }
   assert.equal(game.frame(1048), 1);
 });
