@@ -38,6 +38,20 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Rendering and effects
+
+Starting or restarting owns exactly one animation loop. A restart replaces the
+pending frame and resets game timing; the initial screen does not animate.
+
+Blocks use a fixed cache of canvas sprites for each color, size, and solid/ghost
+opacity. Gradients, rounded corners, and padded shadows are rendered once, not
+per cell in every frame. Baking opacity into each sprite preserves the ghost's
+shadow and fill blending.
+
+Line-clear particles expire after 700 ms of animation time and are removed from
+the same array during updates. Starting or restarting clears any remaining
+particles from the previous game.
+
 ## Tests
 
 With Node.js 18 or newer, run from the repository root:
@@ -46,7 +60,22 @@ With Node.js 18 or newer, run from the repository root:
 node --test block-drop/game.test.cjs
 ```
 
-These dependency-free tests check that starting, restarting, pausing, and replaying keep exactly one render loop.
+These dependency-free tests cover repeated restarts, pause/resume, replay,
+one update/draw per frame, fixed sprite-cache work, ghost opacity, preview
+centering, particle expiry, repeated line clears, and particle reset.
+
+For real-canvas rendering and performance checks, install Chromium so that
+`chromium` is on your path, then run:
+
+```bash
+node --test block-drop/game.test.cjs block-drop/game.browser.test.cjs
+```
+
+The browser check compares all colors, sizes, and opacities with the original
+renderer, including clipped edges. It measures nearly-full-board drawing with
+the active and ghost pieces, flushes canvas work, reports median and
+95th-percentile times, and checks a 16 ms drawing budget. These measurements
+describe the machine running the test, not a guarantee for every device.
 
 ## Files
 
@@ -55,4 +84,5 @@ These dependency-free tests check that starting, restarting, pausing, and replay
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.cjs` | Render-loop lifecycle regression tests |
+| `game.test.cjs` | Animation lifecycle, sprite-cache, and particle regressions |
+| `game.browser.test.cjs` | Chromium pixel comparisons and drawing benchmark |

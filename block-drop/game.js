@@ -4,6 +4,8 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const BLOCK_SHADOW_PADDING = 24;
+const GHOST_ALPHA = 0.18;
 
 const COLORS = {
   I: '#38bdf8',
@@ -35,6 +37,7 @@ canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
+const blockSprites = createBlockSprites();
 
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
@@ -60,6 +63,8 @@ const state = {
   over: false,
   particles: [],
 };
+
+let animationFrameId = null;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
@@ -202,12 +207,16 @@ function spawnParticles(row) {
 }
 
 function updateParticles(delta) {
+  let alive = 0;
   for (const p of state.particles) {
+    p.life -= delta / 700;
+    if (p.life <= 0) continue;
     p.x += p.vx * delta;
     p.y += p.vy * delta;
     p.vy += 0.0008 * delta;
-    p.life -= delta / 700;
+    state.particles[alive++] = p;
   }
+  state.particles.length = alive;
 }
 
 function lighten(hex, amount) {
@@ -219,19 +228,45 @@ function lighten(hex, amount) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
-function drawBlock(context, px, py, color, size, alpha = 1) {
-  const gradient = context.createLinearGradient(px, py, px + size, py + size);
-  gradient.addColorStop(0, lighten(color, 0.35));
-  gradient.addColorStop(1, color);
+function createBlockSprites() {
+  const sprites = new Map();
+  for (const size of [BLOCK, PREVIEW_BLOCK]) {
+    const colors = new Map();
+    for (const color of Object.values(COLORS)) {
+      const opacities = new Map();
+      // Bake opacity with the shadow to preserve translucent ghost compositing.
+      for (const alpha of [1, GHOST_ALPHA]) {
+        const sprite = document.createElement('canvas');
+        const padding = BLOCK_SHADOW_PADDING;
+        sprite.width = sprite.height = size + padding * 2;
+        const context = sprite.getContext('2d');
+        const gradient = context.createLinearGradient(padding, padding, padding + size, padding + size);
+        gradient.addColorStop(0, lighten(color, 0.35));
+        gradient.addColorStop(1, color);
+        context.globalAlpha = alpha;
+        context.shadowColor = color;
+        context.shadowBlur = 12;
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.roundRect(padding + 1, padding + 1, size - 2, size - 2, 5);
+        context.fill();
+        opacities.set(alpha, sprite);
+      }
+      colors.set(color, opacities);
+    }
+    sprites.set(size, colors);
+  }
+  return sprites;
+}
 
+function drawBlock(context, px, py, color, size, alpha = 1) {
   context.save();
-  context.globalAlpha = alpha;
-  context.shadowColor = color;
-  context.shadowBlur = 12;
-  context.fillStyle = gradient;
-  context.beginPath();
-  context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
-  context.fill();
+  context.globalAlpha = 1;
+  context.drawImage(
+    blockSprites.get(size).get(color).get(alpha),
+    px - BLOCK_SHADOW_PADDING,
+    py - BLOCK_SHADOW_PADDING,
+  );
   context.restore();
 }
 
@@ -284,7 +319,7 @@ function draw() {
   });
 
   if (state.piece && !state.over) {
-    drawPiece(state.piece, ghostY(), 0.18);
+    drawPiece(state.piece, ghostY(), GHOST_ALPHA);
     drawPiece(state.piece, state.piece.y, 1);
   }
 
@@ -392,11 +427,13 @@ function update(time = 0) {
 
   updateParticles(delta);
   draw();
-  requestAnimationFrame(update);
+  animationFrameId = requestAnimationFrame(update);
 }
 
 function startGame() {
+  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
   state.board = createBoard();
+  state.particles.length = 0;
   state.score = 0;
   state.lines = 0;
   state.level = 1;
@@ -412,6 +449,7 @@ function startGame() {
   pauseBtn.innerHTML = '&#10074;&#10074;';
 
   document.addEventListener('keydown', (event) => handleKey(event));
+  animationFrameId = requestAnimationFrame(update);
 }
 
 startBtn.addEventListener('click', () => {
@@ -426,4 +464,3 @@ restartBtn.addEventListener('click', startGame);
 
 state.board = createBoard();
 draw();
-requestAnimationFrame(update);
