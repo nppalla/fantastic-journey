@@ -46,7 +46,7 @@ With Node.js 18 or newer, run from the repository root:
 node --test block-drop/game.test.cjs
 ```
 
-These dependency-free tests check that starting, restarting, pausing, and replaying keep exactly one render loop.
+These dependency-free tests check that starting, restarting, pausing, and replaying keep exactly one render loop. They also verify that board, ghost, and preview blocks reuse cached gradient/glow sprites, expired particles are removed, and new games reset particles.
 
 ## Files
 
@@ -55,4 +55,4 @@ These dependency-free tests check that starting, restarting, pausing, and replay
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.cjs` | Render-loop lifecycle regression tests |
+| `game.test.cjs` | Render-loop, sprite-cache, and particle-lifecycle regression tests |

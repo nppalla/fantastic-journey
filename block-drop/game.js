@@ -4,6 +4,8 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const SPRITE_PADDING = 24;
+const blockSprites = new Map();
 
 const COLORS = {
   I: '#38bdf8',
@@ -202,12 +204,15 @@ function spawnParticles(row) {
 }
 
 function updateParticles(delta) {
+  let alive = 0;
   for (const p of state.particles) {
     p.x += p.vx * delta;
     p.y += p.vy * delta;
     p.vy += 0.0008 * delta;
     p.life -= delta / 700;
+    if (p.life > 0) state.particles[alive++] = p;
   }
+  state.particles.length = alive;
 }
 
 function lighten(hex, amount) {
@@ -219,19 +224,36 @@ function lighten(hex, amount) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
-function drawBlock(context, px, py, color, size, alpha = 1) {
-  const gradient = context.createLinearGradient(px, py, px + size, py + size);
+function getBlockSprite(color, size, alpha) {
+  const key = `${color}:${size}:${alpha}`;
+  if (blockSprites.has(key)) return blockSprites.get(key);
+
+  const sprite = document.createElement('canvas');
+  sprite.width = sprite.height = size + SPRITE_PADDING * 2;
+  const context = sprite.getContext('2d');
+  // Bake opacity in so ghost blocks retain the original shadow blending.
+  context.globalAlpha = alpha;
+  const gradient = context.createLinearGradient(
+    SPRITE_PADDING, SPRITE_PADDING, SPRITE_PADDING + size, SPRITE_PADDING + size,
+  );
   gradient.addColorStop(0, lighten(color, 0.35));
   gradient.addColorStop(1, color);
 
-  context.save();
-  context.globalAlpha = alpha;
   context.shadowColor = color;
   context.shadowBlur = 12;
   context.fillStyle = gradient;
   context.beginPath();
-  context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
+  context.roundRect(SPRITE_PADDING + 1, SPRITE_PADDING + 1, size - 2, size - 2, 5);
   context.fill();
+  blockSprites.set(key, sprite);
+  return sprite;
+}
+
+function drawBlock(context, px, py, color, size, alpha = 1) {
+  const sprite = getBlockSprite(color, size, alpha);
+  context.save();
+  context.globalAlpha = 1;
+  context.drawImage(sprite, px - SPRITE_PADDING, py - SPRITE_PADDING);
   context.restore();
 }
 
@@ -405,6 +427,7 @@ function startGame() {
   state.paused = false;
   state.over = false;
   state.running = true;
+  state.particles.length = 0;
   state.nextType = randomType();
   spawn();
   updateStats();
