@@ -38,6 +38,16 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Tests
+
+With Node.js 18 or newer, run from the repository root:
+
+```bash
+node --test block-drop/game.test.cjs
+```
+
+These dependency-free tests check that starting, restarting, pausing, and replaying keep exactly one render loop.
+
 ## Files
 
 | File | Purpose |
@@ -45,3 +55,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `game.test.cjs` | Render-loop lifecycle regression tests |

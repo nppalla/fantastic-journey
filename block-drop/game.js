@@ -412,7 +412,6 @@ function startGame() {
   pauseBtn.innerHTML = '&#10074;&#10074;';
 
   document.addEventListener('keydown', (event) => handleKey(event));
-  requestAnimationFrame(update);
 }
 
 startBtn.addEventListener('click', () => {
@@ -427,3 +426,4 @@ restartBtn.addEventListener('click', startGame);
 
 state.board = createBoard();
 draw();
+requestAnimationFrame(update);
