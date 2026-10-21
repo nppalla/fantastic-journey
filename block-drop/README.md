@@ -45,6 +45,13 @@ Block gradients and glows are cached as sprites instead of rebuilt for every cel
 in every frame. The board, landing-position preview, and next-piece preview reuse
 these sprites.
 
+The game keeps one animation loop and one keyboard listener across restarts.
+Expired line-clear particles are removed, and restarting clears remaining particles.
+
+The board, next-piece preview, and cached sprites use device-pixel-ratio-scaled
+backing stores without changing game coordinates or the displayed canvas sizes.
+Browser zoom and display-density changes refresh the canvases and sprite cache.
+
 ## Regression checks
 
 With Node.js 18 or newer, run the dependency-free checks from the repository root:
@@ -60,4 +67,4 @@ node --test block-drop/game.test.js
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Regression checks for drop timing, keyboard listeners, and canvas rendering |
+| `game.test.js` | Regression checks for gravity, input, animation, particles, and high-DPI rendering |

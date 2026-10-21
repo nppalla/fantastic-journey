@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
 
-function loadGame() {
+function loadGame(pixelRatio = 1) {
   const canvases = [];
 
   function createCanvas() {
@@ -33,7 +33,7 @@ function loadGame() {
       },
     };
     for (const method of [
-      'translate', 'beginPath', 'roundRect', 'fill', 'stroke',
+      'setTransform', 'translate', 'beginPath', 'roundRect', 'fill', 'stroke',
       'clearRect', 'fillRect', 'moveTo', 'lineTo',
     ]) {
       context[method] = (...args) => calls.push({ method, args });
@@ -87,13 +87,19 @@ function loadGame() {
       return createCanvas();
     },
   };
-  const frames = [];
+  const frames = new Map();
+  let frameId = 0;
+  const window = { ...eventTarget(), devicePixelRatio: pixelRatio };
   const context = vm.createContext({
     document,
+    window,
     performance: { now: () => 0 },
     requestAnimationFrame(callback) {
-      frames.push(callback);
-      return frames.length;
+      frames.set(++frameId, callback);
+      return frameId;
+    },
+    cancelAnimationFrame(id) {
+      frames.delete(id);
     },
   });
   vm.runInContext(source, context);
@@ -101,6 +107,14 @@ function loadGame() {
     canvases,
     document,
     elements,
+    frames,
+    window,
+    frame(time) {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      for (const callback of callbacks) callback(time);
+      return callbacks.length;
+    },
     run: (code) => vm.runInContext(code, context),
     press(code) {
       const event = { code, preventDefault() {} };
@@ -122,13 +136,13 @@ test('drop interval preserves early speeds and never falls below 100 ms', () => 
 test('high-level gravity waits for the minimum interval rather than every frame', () => {
   const game = loadGame();
   game.run("startGame(); state.level = 11; state.piece = createPiece('O')");
-  game.run('update(16); update(32); update(99)');
+  for (const time of [16, 32, 99]) game.frame(time);
   assert.equal(game.run('state.piece.y'), 0);
-  game.run('update(101)');
+  game.frame(100);
   assert.equal(game.run('state.piece.y'), 1);
-  game.run('update(117); update(133); update(200)');
+  for (const time of [117, 133, 199]) game.frame(time);
   assert.equal(game.run('state.piece.y'), 1);
-  game.run('update(202)');
+  game.frame(200);
   assert.equal(game.run('state.piece.y'), 2);
 });
 
@@ -213,4 +227,145 @@ test('sprites preserve rounded blocks, padded glow, position, and ghost opacity'
   assert.deepEqual(lastDraw.args.slice(1), [6, 36, 78, 78]);
   assert.equal(lastDraw.alpha, 0.18);
   assert.equal(context.globalAlpha, 1);
+});
+
+test('restarts retain one pending frame and one update per animation frame', () => {
+  const game = loadGame();
+  assert.equal(game.frames.size, 0);
+  game.run('startGame()');
+  for (let cycle = 0; cycle < 10; cycle++) {
+    for (let i = 0; i < 10; i++) game.elements.get('restart-btn').dispatch('click');
+    assert.equal(game.frames.size, 1);
+    assert.equal(game.frame(16), 1);
+    assert.equal(game.frames.size, 1);
+  }
+
+  game.run("state.piece = createPiece('O')");
+  const before = game.run('state.piece.y');
+  assert.equal(game.frame(1000), 1);
+  assert.equal(game.run('state.piece.y'), before + 1);
+  game.press('KeyP');
+  assert.equal(game.frame(1500), 1);
+  assert.equal(game.run('state.piece.y'), before + 1);
+  game.press('KeyP');
+  assert.equal(game.frame(1516), 1);
+  assert.equal(game.run('state.piece.y'), before + 1);
+  game.run('endGame()');
+  assert.equal(game.frame(1532), 1);
+  game.elements.get('start-btn').dispatch('click');
+  assert.equal(game.frames.size, 1);
+  assert.equal(game.frame(16), 1);
+});
+
+test('particle updates retain only live particles and preserve their motion', () => {
+  const game = loadGame();
+  game.run(`
+    spawnParticles(19);
+    updateParticles(350);
+    spawnParticles(3);
+    updateParticles(350);
+  `);
+  assert.equal(game.run('state.particles.length'), 40);
+  assert.equal(game.run('state.particles.every((p) => p.life === 0.5)'), true);
+  game.run('updateParticles(350)');
+  assert.equal(game.run('state.particles.length'), 0);
+
+  game.run(`
+    const particle = { x: 10, y: 20, vx: 0.1, vy: -0.1, life: 1 };
+    state.particles.push({ ...particle, life: 0.01 }, particle);
+    updateParticles(100);
+  `);
+  assert.equal(game.run('state.particles.length'), 1);
+  assert.equal(game.run('state.particles[0].x'), 20);
+  assert.equal(game.run('state.particles[0].y'), 10);
+  assert.ok(Math.abs(game.run('state.particles[0].vy') + 0.02) < 1e-10);
+});
+
+test('particle storage stays bounded across many clears and is reset on restart', () => {
+  const game = loadGame();
+  game.run('startGame()');
+  for (let i = 0; i < 100; i++) {
+    game.run(`
+      state.board[ROWS - 1].fill('I');
+      clearLines();
+      updateParticles(701);
+    `);
+    assert.equal(game.run('state.particles.length'), 0);
+  }
+  assert.equal(game.run('state.lines'), 100);
+  game.run('spawnParticles(19)');
+  assert.equal(game.run('state.particles.length'), 40);
+  game.elements.get('restart-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+for (const ratio of [1, 1.25, 1.5, 2, 3]) {
+  test(`DPR ${ratio} scales both canvases and sprites without changing game coordinates`, () => {
+    const game = loadGame(ratio);
+    for (const [id, width, height] of [['board', 300, 600], ['next', 120, 120]]) {
+      const canvas = game.elements.get(id);
+      assert.equal(canvas.width, Math.round(width * ratio));
+      assert.equal(canvas.height, Math.round(height * ratio));
+      const transform = canvas.context.calls.find((call) => call.method === 'setTransform');
+      assert.deepEqual(transform.args, [ratio, 0, 0, ratio, 0, 0]);
+    }
+    const sprite = game.run('blockSprites.get(`${COLORS.I}:${BLOCK}`)');
+    assert.equal(sprite.width, Math.round(78 * ratio));
+    assert.equal(sprite.height, Math.round(78 * ratio));
+    assert.equal(sprite.context.shadowBlur, 12 * ratio);
+    assert.deepEqual(sprite.context.calls.find((call) => call.method === 'setTransform').args,
+      [sprite.width / 78, 0, 0, sprite.height / 78, 0, 0]);
+
+    game.run(`
+      startGame();
+      state.nextType = 'O';
+      drawNext();
+      spawnParticles(19);
+    `);
+    const previewDraws = game.elements.get('next').context.calls
+      .filter((call) => call.method === 'drawImage').slice(-4);
+    assert.deepEqual(previewDraws.map((call) => call.args.slice(1)),
+      [[12, 12, 72, 72], [36, 12, 72, 72], [12, 36, 72, 72], [36, 36, 72, 72]]);
+    assert.equal(game.run('state.particles.every((p) => p.x >= 0 && p.x < 300 && p.y === 585)'), true);
+    assert.equal(game.run('state.board.length'), 20);
+    assert.equal(game.run('state.board[0].length'), 10);
+    const boardContext = game.elements.get('board').context;
+    game.run('draw()');
+    assert.deepEqual(boardContext.calls.filter((call) => call.method === 'clearRect').at(-1).args,
+      [0, 0, 300, 600]);
+  });
+}
+
+test('DPR changes refresh bounded caches and redraw both idle and running canvases', () => {
+  const game = loadGame();
+  const originalSprite = game.run('blockSprites.get(`${COLORS.I}:${BLOCK}`)');
+  const initialCanvases = game.canvases.length;
+  game.window.devicePixelRatio = 2;
+  game.window.dispatch('resize');
+  assert.equal(game.elements.get('board').width, 600);
+  assert.equal(game.elements.get('next').width, 240);
+  assert.notEqual(game.run('blockSprites.get(`${COLORS.I}:${BLOCK}`)'), originalSprite);
+  assert.equal(game.canvases.length, initialCanvases + 14);
+  assert.equal(game.frames.size, 0);
+  game.window.dispatch('resize');
+  assert.equal(game.canvases.length, initialCanvases + 14);
+
+  game.run("startGame(); state.nextType = 'O'; spawnParticles(19)");
+  const previewContext = game.elements.get('next').context;
+  const previewDrawCount = () => previewContext.calls
+    .filter((call) => call.method === 'drawImage').length;
+  const beforeDraws = previewDrawCount();
+  game.window.devicePixelRatio = 1.5;
+  assert.equal(game.frame(16), 1);
+  assert.equal(game.elements.get('board').width, 450);
+  assert.equal(game.elements.get('next').width, 180);
+  assert.equal(previewDrawCount(), beforeDraws + 4);
+  assert.equal(game.run('blockSprites.size'), 14);
+  assert.equal(game.run('state.particles.length'), 40);
+  assert.equal(game.frames.size, 1);
+
+  game.window.devicePixelRatio = undefined;
+  game.window.dispatch('resize');
+  assert.equal(game.elements.get('board').width, 300);
+  assert.equal(game.elements.get('next').width, 120);
 });
