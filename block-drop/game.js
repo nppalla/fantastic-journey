@@ -4,6 +4,10 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const BOARD_WIDTH = COLS * BLOCK;
+const BOARD_HEIGHT = ROWS * BLOCK;
+const PREVIEW_SIZE = 120;
+const SPRITE_PADDING = 16;
 
 const COLORS = {
   I: '#38bdf8',
@@ -30,11 +34,12 @@ const LINE_SCORES = [0, 100, 300, 500, 800];
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
-canvas.width = COLS * BLOCK;
-canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
+const blockSprites = new Map();
+let pixelRatio = 0;
+let animationFrameId = null;
 
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
@@ -60,6 +65,24 @@ const state = {
   over: false,
   particles: [],
 };
+
+function resizeCanvases() {
+  const ratio = window.devicePixelRatio || 1;
+  if (ratio === pixelRatio) return false;
+  pixelRatio = ratio;
+
+  for (const [surface, context, width, height] of [
+    [canvas, ctx, BOARD_WIDTH, BOARD_HEIGHT],
+    [nextCanvas, nextCtx, PREVIEW_SIZE, PREVIEW_SIZE],
+  ]) {
+    surface.width = Math.round(width * ratio);
+    surface.height = Math.round(height * ratio);
+    context.setTransform(surface.width / width, 0, 0, surface.height / height, 0, 0);
+  }
+
+  blockSprites.clear();
+  return true;
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
@@ -191,7 +214,7 @@ function spawnParticles(row) {
   const colors = Object.values(COLORS);
   for (let i = 0; i < 40; i++) {
     state.particles.push({
-      x: Math.random() * canvas.width,
+      x: Math.random() * BOARD_WIDTH,
       y: row * BLOCK + BLOCK / 2,
       vx: (Math.random() - 0.5) * 0.4,
       vy: (Math.random() - 0.8) * 0.4,
@@ -202,12 +225,17 @@ function spawnParticles(row) {
 }
 
 function updateParticles(delta) {
+  let liveCount = 0;
   for (const p of state.particles) {
     p.x += p.vx * delta;
     p.y += p.vy * delta;
     p.vy += 0.0008 * delta;
     p.life -= delta / 700;
+    if (p.life > 0) {
+      state.particles[liveCount++] = p;
+    }
   }
+  state.particles.length = liveCount;
 }
 
 function lighten(hex, amount) {
@@ -219,19 +247,40 @@ function lighten(hex, amount) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
-function drawBlock(context, px, py, color, size, alpha = 1) {
-  const gradient = context.createLinearGradient(px, py, px + size, py + size);
+function getBlockSprite(color, size) {
+  const key = `${size}:${color}`;
+  if (blockSprites.has(key)) return blockSprites.get(key);
+
+  const sprite = document.createElement('canvas');
+  const extent = size + SPRITE_PADDING * 2;
+  sprite.width = Math.round(extent * pixelRatio);
+  sprite.height = Math.round(extent * pixelRatio);
+  const context = sprite.getContext('2d');
+  context.setTransform(sprite.width / extent, 0, 0, sprite.height / extent, 0, 0);
+  const gradient = context.createLinearGradient(
+    SPRITE_PADDING, SPRITE_PADDING, SPRITE_PADDING + size, SPRITE_PADDING + size,
+  );
   gradient.addColorStop(0, lighten(color, 0.35));
   gradient.addColorStop(1, color);
 
-  context.save();
-  context.globalAlpha = alpha;
   context.shadowColor = color;
-  context.shadowBlur = 12;
+  context.shadowBlur = 12 * pixelRatio;
   context.fillStyle = gradient;
   context.beginPath();
-  context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
+  context.roundRect(SPRITE_PADDING + 1, SPRITE_PADDING + 1, size - 2, size - 2, 5);
   context.fill();
+  blockSprites.set(key, sprite);
+  return sprite;
+}
+
+function drawBlock(context, px, py, color, size, alpha = 1) {
+  const extent = size + SPRITE_PADDING * 2;
+  context.save();
+  context.globalAlpha = alpha;
+  context.drawImage(
+    getBlockSprite(color, size),
+    px - SPRITE_PADDING, py - SPRITE_PADDING, extent, extent,
+  );
   context.restore();
 }
 
@@ -241,13 +290,13 @@ function drawGrid() {
   for (let x = 1; x < COLS; x++) {
     ctx.beginPath();
     ctx.moveTo(x * BLOCK + 0.5, 0);
-    ctx.lineTo(x * BLOCK + 0.5, canvas.height);
+    ctx.lineTo(x * BLOCK + 0.5, BOARD_HEIGHT);
     ctx.stroke();
   }
   for (let y = 1; y < ROWS; y++) {
     ctx.beginPath();
     ctx.moveTo(0, y * BLOCK + 0.5);
-    ctx.lineTo(canvas.width, y * BLOCK + 0.5);
+    ctx.lineTo(BOARD_WIDTH, y * BLOCK + 0.5);
     ctx.stroke();
   }
 }
@@ -274,7 +323,7 @@ function drawParticles() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
   drawGrid();
 
   state.board.forEach((row, y) => {
@@ -292,7 +341,7 @@ function draw() {
 }
 
 function drawNext() {
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  nextCtx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
   const shape = SHAPES[state.nextType];
 
   // Center the filled cells, not the whole matrix, so I and O sit in the middle.
@@ -300,8 +349,8 @@ function drawNext() {
   const filledCols = shape[0].map((_, x) => (shape.some((row) => row[x]) ? x : -1)).filter((x) => x >= 0);
   const width = filledCols.length * PREVIEW_BLOCK;
   const height = filledRows.length * PREVIEW_BLOCK;
-  const offsetX = (nextCanvas.width - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
-  const offsetY = (nextCanvas.height - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
+  const offsetX = (PREVIEW_SIZE - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
+  const offsetY = (PREVIEW_SIZE - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
 
   shape.forEach((row, y) => {
     row.forEach((filled, x) => {
@@ -380,6 +429,7 @@ function handleKey(event) {
 }
 
 function update(time = 0) {
+  if (resizeCanvases() && state.nextType) drawNext();
   const delta = time - state.lastTime;
   state.lastTime = time;
 
@@ -392,11 +442,13 @@ function update(time = 0) {
 
   updateParticles(delta);
   draw();
-  requestAnimationFrame(update);
+  animationFrameId = requestAnimationFrame(update);
 }
 
 function startGame() {
+  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
   state.board = createBoard();
+  state.particles = [];
   state.score = 0;
   state.lines = 0;
   state.level = 1;
@@ -412,7 +464,7 @@ function startGame() {
   pauseBtn.innerHTML = '&#10074;&#10074;';
 
   document.addEventListener('keydown', (event) => handleKey(event));
-  requestAnimationFrame(update);
+  animationFrameId = requestAnimationFrame(update);
 }
 
 startBtn.addEventListener('click', () => {
@@ -424,6 +476,12 @@ startBtn.addEventListener('click', () => {
 });
 pauseBtn.addEventListener('click', togglePause);
 restartBtn.addEventListener('click', startGame);
+window.addEventListener('resize', () => {
+  resizeCanvases();
+  draw();
+  if (state.nextType) drawNext();
+});
 
 state.board = createBoard();
+resizeCanvases();
 draw();

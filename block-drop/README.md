@@ -38,6 +38,16 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Rendering
+
+The game maintains one animation loop across restarts and removes expired
+line-clear particles. Block gradients and glows are cached as sprites rather
+than recreated for every cell in every frame.
+
+The board and next-piece preview use device-pixel-ratio-scaled backing stores
+while keeping their logical dimensions. Browser zoom and display-density
+changes refresh the canvases and sprite cache.
+
 ## Files
 
 | File | Purpose |
