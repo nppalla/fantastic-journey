@@ -189,7 +189,10 @@ const KEY_DIRECTIONS = {
 
 document.addEventListener('keydown', (event) => {
   const direction = KEY_DIRECTIONS[event.key];
-  if (direction) move(direction);
+  if (direction) {
+    event.preventDefault();
+    move(direction);
+  }
 });
 
 let touchStart = null;
