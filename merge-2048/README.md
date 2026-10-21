@@ -16,7 +16,7 @@ npx serve .
 | --- | --- |
 | Arrow keys | Slide all tiles |
 | Swipe | Slide all tiles on a touch screen |
-| Undo | Go back one move |
+| Undo | Restore the board and score before the last move |
 | New game | Start again |
 
 ## Rules
@@ -32,6 +32,16 @@ npx serve .
 ## Scoring
 
 Each merge adds the value of the new tile to your score. The best score is saved in the browser.
+
+Undo restores your score before the last move. The best score remains the highest score reached.
+
+## Tests
+
+Run the undo regression tests from the repository root with Node.js:
+
+```bash
+node --test merge-2048/game.test.cjs
+```
 
 ## Files
 
