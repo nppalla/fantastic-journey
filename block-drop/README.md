@@ -25,6 +25,7 @@ npx serve .
 - Fill a full row to clear it.
 - Every 10 cleared lines raises the level by one.
 - Each level makes pieces fall faster.
+- Automatic falling has a minimum interval of 100 ms, including at level 11 and above.
 - The game ends when a new piece cannot enter the board.
 
 ## Scoring
@@ -38,6 +39,20 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Rendering
+
+Block gradients and glows are cached as sprites instead of rebuilt for every cell
+in every frame. The board, landing-position preview, and next-piece preview reuse
+these sprites.
+
+## Regression checks
+
+With Node.js 18 or newer, run the dependency-free checks from the repository root:
+
+```bash
+node --test block-drop/game.test.js
+```
+
 ## Files
 
 | File | Purpose |
@@ -45,3 +60,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `game.test.js` | Regression checks for drop timing, keyboard listeners, and canvas rendering |
