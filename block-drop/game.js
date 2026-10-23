@@ -4,6 +4,7 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const SPRITE_PADDING = 16;
 
 const COLORS = {
   I: '#38bdf8',
@@ -35,6 +36,7 @@ canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
+const blockSprites = new Map();
 
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
@@ -128,6 +130,7 @@ function hardDrop() {
   }
   state.score += distance * 2;
   lockPiece();
+  updateStats();
   state.dropCounter = 0;
 }
 
@@ -219,19 +222,33 @@ function lighten(hex, amount) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
-function drawBlock(context, px, py, color, size, alpha = 1) {
-  const gradient = context.createLinearGradient(px, py, px + size, py + size);
+function getBlockSprite(color, size) {
+  const key = `${size}:${color}`;
+  if (blockSprites.has(key)) return blockSprites.get(key);
+
+  const sprite = document.createElement('canvas');
+  sprite.width = sprite.height = size + SPRITE_PADDING * 2;
+  const context = sprite.getContext('2d');
+  const gradient = context.createLinearGradient(
+    SPRITE_PADDING, SPRITE_PADDING, SPRITE_PADDING + size, SPRITE_PADDING + size,
+  );
   gradient.addColorStop(0, lighten(color, 0.35));
   gradient.addColorStop(1, color);
 
-  context.save();
-  context.globalAlpha = alpha;
   context.shadowColor = color;
   context.shadowBlur = 12;
   context.fillStyle = gradient;
   context.beginPath();
-  context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
+  context.roundRect(SPRITE_PADDING + 1, SPRITE_PADDING + 1, size - 2, size - 2, 5);
   context.fill();
+  blockSprites.set(key, sprite);
+  return sprite;
+}
+
+function drawBlock(context, px, py, color, size, alpha = 1) {
+  context.save();
+  context.globalAlpha = alpha;
+  context.drawImage(getBlockSprite(color, size), px - SPRITE_PADDING, py - SPRITE_PADDING);
   context.restore();
 }
 
@@ -293,6 +310,7 @@ function draw() {
 
 function drawNext() {
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  nextCanvas.setAttribute('aria-label', `Next piece: ${state.nextType}`);
   const shape = SHAPES[state.nextType];
 
   // Center the filled cells, not the whole matrix, so I and O sit in the middle.
@@ -318,42 +336,58 @@ function drawNext() {
 }
 
 function updateStats() {
-  scoreEl.textContent = state.score.toLocaleString();
-  linesEl.textContent = state.lines;
-  levelEl.textContent = state.level;
+  for (const [element, value] of [
+    [scoreEl, state.score.toLocaleString()],
+    [linesEl, String(state.lines)],
+    [levelEl, String(state.level)],
+  ]) {
+    if (element.textContent !== value) element.textContent = value;
+  }
 }
 
-function showOverlay(title, text, buttonLabel) {
+function showOverlay(title, text, buttonSymbol, buttonLabel) {
   overlayTitle.textContent = title;
   overlayText.textContent = text;
-  startBtn.innerHTML = buttonLabel;
+  startBtn.innerHTML = buttonSymbol;
+  startBtn.setAttribute('aria-label', buttonLabel);
   overlay.classList.remove('hidden');
+  startBtn.focus();
 }
 
 function hideOverlay() {
   overlay.classList.add('hidden');
+  canvas.focus();
 }
 
 function togglePause() {
   if (!state.running || state.over) return;
   state.paused = !state.paused;
   if (state.paused) {
-    showOverlay('Paused', 'Press P to resume.', '&#9654;');
+    showOverlay('Paused', 'Press P or choose Resume game to resume.', '&#9654;', 'Resume game');
     pauseBtn.innerHTML = '&#9654;';
+    pauseBtn.setAttribute('aria-label', 'Resume game');
   } else {
     hideOverlay();
     pauseBtn.innerHTML = '&#10074;&#10074;';
+    pauseBtn.setAttribute('aria-label', 'Pause game');
   }
 }
 
 function endGame() {
   state.over = true;
   state.running = false;
-  showOverlay('Game over', `Final score: ${state.score.toLocaleString()}`, '&#10227;');
+  pauseBtn.disabled = true;
+  showOverlay('Game over', `Final score: ${state.score.toLocaleString()}`, '&#10227;', 'Play again');
 }
 
 function handleKey(event) {
-  if (!state.running || state.over) return;
+  if (!state.running || state.over || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.code === 'KeyP') {
+    togglePause();
+    event.preventDefault();
+    return;
+  }
+  if (state.paused || event.target !== canvas) return;
   switch (event.code) {
     case 'ArrowLeft':
       move(-1);
@@ -369,9 +403,6 @@ function handleKey(event) {
       break;
     case 'Space':
       hardDrop();
-      break;
-    case 'KeyP':
-      togglePause();
       break;
     default:
       return;
@@ -409,9 +440,10 @@ function startGame() {
   spawn();
   updateStats();
   hideOverlay();
+  pauseBtn.disabled = false;
   pauseBtn.innerHTML = '&#10074;&#10074;';
+  pauseBtn.setAttribute('aria-label', 'Pause game');
 
-  document.addEventListener('keydown', (event) => handleKey(event));
   requestAnimationFrame(update);
 }
 
@@ -424,6 +456,8 @@ startBtn.addEventListener('click', () => {
 });
 pauseBtn.addEventListener('click', togglePause);
 restartBtn.addEventListener('click', startGame);
+document.addEventListener('keydown', handleKey);
 
 state.board = createBoard();
 draw();
+startBtn.focus();
