@@ -23,6 +23,7 @@ npx serve .
 ## Rules
 
 - Fill a full row to clear it.
+- Rotations that hit a wall, the floor, or locked blocks are rejected.
 - Every 10 cleared lines raises the level by one.
 - Each level makes pieces fall faster.
 - The game ends when a new piece cannot enter the board.
@@ -38,6 +39,14 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Tests
+
+Run the rotation regression tests with Node.js 18 or newer from the repository root:
+
+```bash
+node --test block-drop/game.test.js
+```
+
 ## Files
 
 | File | Purpose |
@@ -45,3 +54,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `game.test.js` | Dependency-free rotation regression tests |

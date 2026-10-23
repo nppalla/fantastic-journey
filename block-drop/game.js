@@ -99,7 +99,11 @@ function rotateMatrix(matrix) {
 }
 
 function rotate() {
-  state.piece.shape = rotateMatrix(state.piece.shape);
+  const { piece } = state;
+  const shape = rotateMatrix(piece.shape);
+  if (!collides(shape, piece.x, piece.y)) {
+    piece.shape = shape;
+  }
 }
 
 function move(dx) {
