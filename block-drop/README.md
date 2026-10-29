@@ -40,13 +40,15 @@ A hard drop gives 2 points for each row the piece falls.
 
 ## Rendering
 
-Restarting replaces the pending animation frame, so only one update/draw loop
-runs. Keyboard input is registered once rather than once per restart.
+The first game starts one update/draw loop. Restarting resets game state and the
+drop timer without canceling or scheduling another loop. Keyboard input is
+registered once rather than once per restart.
 
 Block artwork is cached per color and block size. Gradients, color parsing, and
 blurred glow are rendered only when a sprite is first needed; board cells,
 active pieces, ghosts, and the next-piece preview reuse those sprites. Padding
 preserves the glow, and ghost opacity is applied when drawing the cached image.
+Only opacity is changed and restored per block, avoiding full canvas-state saves.
 
 ## Tests
 

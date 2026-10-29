@@ -250,10 +250,10 @@ function drawBlock(context, px, py, color, size, alpha = 1) {
     blockSprites.set(key, sprite);
   }
 
-  context.save();
+  const previousAlpha = context.globalAlpha;
   context.globalAlpha = alpha;
   context.drawImage(sprite, px - SPRITE_PADDING, py - SPRITE_PADDING);
-  context.restore();
+  context.globalAlpha = previousAlpha;
 }
 
 function drawGrid() {
@@ -417,7 +417,6 @@ function update(time = 0) {
 }
 
 function startGame() {
-  if (animationFrame !== null) cancelAnimationFrame(animationFrame);
   state.board = createBoard();
   state.score = 0;
   state.lines = 0;
@@ -433,7 +432,7 @@ function startGame() {
   hideOverlay();
   pauseBtn.innerHTML = '&#10074;&#10074;';
 
-  animationFrame = requestAnimationFrame(update);
+  if (animationFrame === null) animationFrame = requestAnimationFrame(update);
 }
 
 startBtn.addEventListener('click', () => {

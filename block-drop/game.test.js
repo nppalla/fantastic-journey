@@ -12,7 +12,7 @@ function loadGame() {
   const metrics = { gradients: 0, shadowFills: 0, hexParses: 0 };
   const sprites = [];
   const frames = new Map();
-  let nextFrame = 0;
+  let nextFrame = -1;
   let now = 0;
 
   function createContext() {
@@ -37,9 +37,11 @@ function loadGame() {
       this.calls.push({ name: 'fill', alpha: this.globalAlpha });
     };
     context.save = function () {
+      this.calls.push({ name: 'save' });
       stack.push(this.globalAlpha);
     };
     context.restore = function () {
+      this.calls.push({ name: 'restore' });
       this.globalAlpha = stack.pop();
     };
     return context;
@@ -127,9 +129,12 @@ test('ten restarts retain one update and draw per frame with a fresh drop timer'
   const board = game.elements.get('board');
   assert.equal(game.frames.size, 0);
   game.elements.get('start-btn').dispatch('click');
+  const firstFrame = game.frames.keys().next().value;
+  assert.equal(firstFrame, 0);
   for (let i = 0; i < 10; i++) {
     game.elements.get('restart-btn').dispatch('click');
     assert.equal(game.frames.size, 1);
+    assert.equal(game.frames.keys().next().value, firstFrame);
   }
 
   for (const time of [100, 200, 300]) {
@@ -139,9 +144,26 @@ test('ten restarts retain one update and draw per frame with a fresh drop timer'
     assert.equal(game.frames.size, 1);
     assert.equal(game.run('state.dropCounter'), time);
   }
+  const pendingFrame = game.frames.keys().next().value;
   game.elements.get('restart-btn').dispatch('click');
+  assert.equal(game.frames.keys().next().value, pendingFrame);
   assert.equal(game.frame(316), 1);
   assert.equal(game.run('state.dropCounter'), 16);
+});
+
+test('starting after idle and restarting between frames resets elapsed time, not the loop', () => {
+  const game = loadGame();
+  assert.equal(game.frame(60000), 0);
+  for (let i = 0; i < 20; i++) {
+    game.elements.get('restart-btn').dispatch('click');
+    const pendingFrame = game.frames.keys().next().value;
+    for (let j = 0; j < 10; j++) game.elements.get('restart-btn').dispatch('click');
+    assert.equal(game.frames.keys().next().value, pendingFrame);
+    assert.equal(game.frame(60000 + (i + 1) * 16), 1);
+    assert.equal(game.frames.size, 1);
+    assert.equal(game.run('state.dropCounter'), 16);
+    assert.equal(game.run('state.piece.y === (state.piece.type === "I" ? -1 : 0)'), true);
+  }
 });
 
 test('pause, resume, game over, and restarting preserve a single render loop', () => {
@@ -226,6 +248,21 @@ test('active and ghost pieces share sprites without leaking drawing opacity', ()
   assert.equal(new Set(blocks.map(({ args }) => args[0])).size, 1);
   assert.deepEqual(blocks.map(({ alpha }) => alpha), [0.18, 0.18, 0.18, 0.18, 1, 1, 1, 1]);
   assert.equal(board.getContext('2d').globalAlpha, 1);
+});
+
+test('cached blocks restore incoming opacity without saving the entire context', () => {
+  const game = loadGame();
+  for (const [id, context] of [['board', 'ctx'], ['next', 'nextCtx']]) {
+    const canvas = game.elements.get(id);
+    game.run(`
+      ${context}.globalAlpha = 0.4;
+      drawBlock(${context}, 30, 60, COLORS.I, ${id === 'board' ? 'BLOCK' : 'PREVIEW_BLOCK'}, 0.18);
+    `);
+    assert.equal(calls(canvas, 'drawImage').at(-1).alpha, 0.18);
+    assert.equal(canvas.getContext('2d').globalAlpha, 0.4);
+    assert.equal(calls(canvas, 'save').length, 0);
+    assert.equal(calls(canvas, 'restore').length, 0);
+  }
 });
 
 test('preview sprites keep every next-piece shape centered at its original size', () => {

@@ -13,8 +13,10 @@ function checkRendering() {
     if (!condition) throw new Error(message);
   };
   startGame();
+  const firstFrame = pendingFrames.keys().next().value;
   for (let i = 0; i < 10; i++) startGame();
   check(pendingFrames.size === 1, 'Ten restarts must retain exactly one pending frame');
+  check(pendingFrames.has(firstFrame), 'Restarts must reuse the pending frame, including ID zero');
   const callback = [...pendingFrames.values()][0];
   pendingFrames.clear();
   let draws = 0;
@@ -57,9 +59,8 @@ function checkRendering() {
   check(gradients === warmedGradients, 'Warmed preview drawing must not create gradients');
   CanvasRenderingContext2D.prototype.createLinearGradient = originalGradient;
 
-  const cached = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const cachedDrawBlock = drawBlock;
-  drawBlock = (context, px, py, color, size, alpha = 1) => {
+  const originalDrawBlock = (context, px, py, color, size, alpha = 1) => {
     const gradient = context.createLinearGradient(px, py, px + size, py + size);
     gradient.addColorStop(0, lighten(color, 0.35));
     gradient.addColorStop(1, color);
@@ -73,18 +74,41 @@ function checkRendering() {
     context.fill();
     context.restore();
   };
-  draw();
-  const original = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  let difference = 0;
-  for (let i = 0; i < cached.length; i++) difference += Math.abs(cached[i] - original[i]);
-  const channelDifference = difference / cached.length;
-  check(channelDifference < 1, 'Cached blocks must preserve the original artwork');
+  const compareArtwork = (context, target, render) => {
+    render();
+    const cached = context.getImageData(0, 0, target.width, target.height).data;
+    drawBlock = originalDrawBlock;
+    try {
+      render();
+      const original = context.getImageData(0, 0, target.width, target.height).data;
+      let difference = 0;
+      for (let i = 0; i < cached.length; i++) difference += Math.abs(cached[i] - original[i]);
+      return difference / cached.length;
+    } finally {
+      drawBlock = cachedDrawBlock;
+    }
+  };
+  const channelDifference = compareArtwork(ctx, canvas, draw);
+  check(channelDifference < 1, 'Cached blocks must preserve the original dense-board artwork');
 
+  drawBlock = originalDrawBlock;
   for (let i = 0; i < 10; i++) measure();
   const originalTimings = Array.from({ length: 80 }, measure).sort((a, b) => a - b);
   drawBlock = cachedDrawBlock;
   const p95 = timings[Math.floor(timings.length * 0.95)];
   check(p95 < 16, `Warmed full-board drawing p95 was ${p95.toFixed(2)} ms, expected below 16 ms`);
+
+  state.board = createBoard();
+  state.piece = createPiece('O');
+  state.piece.y = 1;
+  const ghostDifference = compareArtwork(ctx, canvas, draw);
+  check(ghostDifference < 1, 'Cached blocks must preserve separate active and translucent ghost pieces');
+  const previewDifferences = [...'IJLOSTZ'].map((type) => {
+    state.nextType = type;
+    return compareArtwork(nextCtx, nextCanvas, drawNext);
+  });
+  check(previewDifferences.every((difference) => difference < 1),
+    'Cached blocks must preserve every next-piece preview');
 
   return {
     coldMs: cold,
@@ -93,6 +117,8 @@ function checkRendering() {
     originalMeanMs: originalTimings.reduce((sum, time) => sum + time, 0) / originalTimings.length,
     originalP95Ms: originalTimings[Math.floor(originalTimings.length * 0.95)],
     meanChannelDifference: channelDifference,
+    ghostChannelDifference: ghostDifference,
+    maxPreviewChannelDifference: Math.max(...previewDifferences),
   };
 }
 
@@ -103,7 +129,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
     const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
     const harness = `
       const pendingFrames = new Map();
-      let frameId = 0;
+      let frameId = -1;
       window.requestAnimationFrame = (callback) => {
         pendingFrames.set(++frameId, callback);
         return frameId;
