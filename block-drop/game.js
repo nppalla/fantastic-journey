@@ -4,6 +4,7 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const SPRITE_PADDING = 18;
 
 const COLORS = {
   I: '#38bdf8',
@@ -35,6 +36,8 @@ canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
+const blockSprites = new Map();
+let animationFrame = null;
 
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
@@ -219,19 +222,37 @@ function lighten(hex, amount) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
-function drawBlock(context, px, py, color, size, alpha = 1) {
-  const gradient = context.createLinearGradient(px, py, px + size, py + size);
+function createBlockSprite(color, size) {
+  const sprite = document.createElement('canvas');
+  // Keep the glow outside the block instead of clipping it to the cell.
+  sprite.width = sprite.height = size + SPRITE_PADDING * 2;
+  const context = sprite.getContext('2d');
+  const gradient = context.createLinearGradient(
+    SPRITE_PADDING, SPRITE_PADDING, SPRITE_PADDING + size, SPRITE_PADDING + size,
+  );
   gradient.addColorStop(0, lighten(color, 0.35));
   gradient.addColorStop(1, color);
 
-  context.save();
-  context.globalAlpha = alpha;
   context.shadowColor = color;
   context.shadowBlur = 12;
   context.fillStyle = gradient;
   context.beginPath();
-  context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
+  context.roundRect(SPRITE_PADDING + 1, SPRITE_PADDING + 1, size - 2, size - 2, 5);
   context.fill();
+  return sprite;
+}
+
+function drawBlock(context, px, py, color, size, alpha = 1) {
+  const key = `${color}:${size}`;
+  let sprite = blockSprites.get(key);
+  if (!sprite) {
+    sprite = createBlockSprite(color, size);
+    blockSprites.set(key, sprite);
+  }
+
+  context.save();
+  context.globalAlpha = alpha;
+  context.drawImage(sprite, px - SPRITE_PADDING, py - SPRITE_PADDING);
   context.restore();
 }
 
@@ -392,10 +413,11 @@ function update(time = 0) {
 
   updateParticles(delta);
   draw();
-  requestAnimationFrame(update);
+  animationFrame = requestAnimationFrame(update);
 }
 
 function startGame() {
+  if (animationFrame !== null) cancelAnimationFrame(animationFrame);
   state.board = createBoard();
   state.score = 0;
   state.lines = 0;
@@ -411,8 +433,7 @@ function startGame() {
   hideOverlay();
   pauseBtn.innerHTML = '&#10074;&#10074;';
 
-  document.addEventListener('keydown', (event) => handleKey(event));
-  requestAnimationFrame(update);
+  animationFrame = requestAnimationFrame(update);
 }
 
 startBtn.addEventListener('click', () => {
@@ -424,6 +445,7 @@ startBtn.addEventListener('click', () => {
 });
 pauseBtn.addEventListener('click', togglePause);
 restartBtn.addEventListener('click', startGame);
+document.addEventListener('keydown', handleKey);
 
 state.board = createBoard();
 draw();
