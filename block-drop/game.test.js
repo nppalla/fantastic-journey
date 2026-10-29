@@ -7,11 +7,13 @@ const { test } = require('node:test');
 const vm = require('node:vm');
 
 const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
+const html = readFileSync(join(__dirname, 'index.html'), 'utf8');
 
-function loadGame() {
+function loadGame({ devicePixelRatio = 1 } = {}) {
   const metrics = { gradients: 0, shadowFills: 0, hexParses: 0 };
   const sprites = [];
   const frames = new Map();
+  const queries = [];
   let nextFrame = -1;
   let now = 0;
 
@@ -20,7 +22,7 @@ function loadGame() {
     const context = { calls: [], globalAlpha: 1, shadowBlur: 0 };
     for (const name of [
       'clearRect', 'beginPath', 'roundRect', 'moveTo', 'lineTo',
-      'stroke', 'fillRect', 'drawImage',
+      'stroke', 'fillRect', 'drawImage', 'setTransform',
     ]) {
       context[name] = function (...args) {
         this.calls.push({ name, args, alpha: this.globalAlpha });
@@ -50,14 +52,25 @@ function loadGame() {
   function createElement() {
     const listeners = new Map();
     const classes = new Set();
+    const attributes = new Map();
     return {
+      style: {},
+      textContent: '',
+      disabled: false,
+      setAttribute: (name, value) => attributes.set(name, value),
+      getAttribute: (name) => attributes.get(name),
+      focus() { document.activeElement = this; },
       classList: {
         add: (name) => classes.add(name),
         remove: (name) => classes.delete(name),
+        contains: (name) => classes.has(name),
       },
       addEventListener(name, callback) {
         if (!listeners.has(name)) listeners.set(name, new Set());
         listeners.get(name).add(callback);
+      },
+      removeEventListener(name, callback) {
+        listeners.get(name)?.delete(callback);
       },
       dispatch(name, event) {
         for (const callback of listeners.get(name) || []) callback(event);
@@ -90,8 +103,16 @@ function loadGame() {
       return sprite;
     },
   });
+  const window = Object.assign(createElement(), {
+    devicePixelRatio,
+    matchMedia(media) {
+      const query = Object.assign(createElement(), { media });
+      queries.push(query);
+      return query;
+    },
+  });
   const sandbox = vm.createContext({
-    document,
+    document, window,
     parseInt(value, radix) {
       metrics.hexParses++;
       return parseInt(value, radix);
@@ -107,7 +128,7 @@ function loadGame() {
   run(source);
 
   return {
-    elements, document, frames, metrics, sprites, run,
+    elements, document, window, queries, frames, metrics, sprites, run,
     frame(time) {
       now = time;
       const callbacks = [...frames.entries()];
@@ -193,6 +214,7 @@ test('restarting registers keyboard input only once', () => {
   let prevented = 0;
   game.document.dispatch('keydown', {
     code: 'ArrowLeft',
+    target: game.elements.get('board'),
     preventDefault() { prevented++; },
   });
   assert.equal(game.run('state.piece.x'), x - 1);
@@ -236,7 +258,8 @@ test('cached artwork preserves gradients, rounded corners, and padded glow', () 
   assert.deepEqual(calls(sprite, 'roundRect')[0].args, [19, 19, 28, 28, 5]);
   assert.equal(sprite.getContext('2d').shadowBlur, 12);
   assert.equal(sprite.getContext('2d').shadowColor, '#38bdf8');
-  assert.deepEqual(calls(game.elements.get('board'), 'drawImage').at(-1).args, [sprite, 12, 42]);
+  assert.deepEqual(calls(game.elements.get('board'), 'drawImage').at(-1).args,
+    [sprite, 12, 42, 66, 66]);
 });
 
 test('active and ghost pieces share sprites without leaking drawing opacity', () => {
@@ -281,4 +304,221 @@ test('preview sprites keep every next-piece shape centered at its original size'
     assert.equal(blocks[0].args[0].height, 60);
     assert.deepEqual(calls(preview, 'clearRect').at(-1).args, [0, 0, 120, 120]);
   }
+});
+
+test('particle updates retain only live particles and preserve their motion', () => {
+  const game = loadGame();
+  game.run(`
+    spawnParticles(19);
+    state.particles[0].life = 0.1;
+    state.particles[1].life = 0;
+    state.particles[2].life = -1;
+    state.particles[3].x = 20;
+    state.particles[3].y = 30;
+    state.particles[3].vx = 0.1;
+    state.particles[3].vy = -0.2;
+    updateParticles(140);
+  `);
+  assert.equal(game.run('state.particles.length'), 37);
+  assert.equal(game.run('state.particles.every((particle) => particle.life > 0)'), true);
+  assert.equal(game.run('state.particles[0].x'), 34);
+  assert.equal(game.run('state.particles[0].y'), 2);
+  assert.equal(game.run('state.particles[0].life'), 0.8);
+  game.run('updateParticles(700)');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+test('many line clears and new games cannot accumulate expired particles', () => {
+  const game = loadGame();
+  game.run('startGame()');
+  for (let i = 0; i < 100; i++) {
+    game.run("state.board[ROWS - 1].fill('I'); clearLines()");
+    assert.equal(game.run('state.particles.length'), 40);
+    game.run('updateParticles(700)');
+    assert.equal(game.run('state.particles.length'), 0);
+  }
+  game.run('spawnParticles(19); endGame(); startGame()');
+  assert.equal(game.run('state.particles.length'), 0);
+  game.run('spawnParticles(19)');
+  game.elements.get('restart-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+for (const ratio of [1, 1.25, 2, 3]) {
+  test(`DPR ${ratio} scales backing stores and sprites without changing logical coordinates`, () => {
+    const game = loadGame({ devicePixelRatio: ratio });
+    const board = game.elements.get('board');
+    const preview = game.elements.get('next');
+    assert.deepEqual([board.width, board.height], [300 * ratio, 600 * ratio]);
+    assert.deepEqual([preview.width, preview.height], [120 * ratio, 120 * ratio]);
+    assert.deepEqual(board.style, { width: '300px', height: '600px' });
+    assert.deepEqual(preview.style, { width: '120px', height: '120px' });
+    for (const canvas of [board, preview]) {
+      assert.deepEqual(calls(canvas, 'setTransform').at(-1).args, [ratio, 0, 0, ratio, 0, 0]);
+    }
+
+    game.run(`
+      state.nextType = 'I';
+      drawNext();
+      drawBlock(ctx, 30, 60, COLORS.I, BLOCK);
+      spawnParticles(19);
+      draw();
+    `);
+    const padding = Math.ceil(18 * ratio);
+    const phaseX = 30 * ratio % 1;
+    const phaseY = 60 * ratio % 1;
+    const sprite = game.sprites.find((item) => item.width === Math.ceil(30 * ratio + phaseX) + padding * 2);
+    assert.ok(sprite);
+    assert.deepEqual(calls(sprite, 'setTransform')[0].args,
+      [ratio, 0, 0, ratio, padding - 18 * ratio + phaseX, padding - 18 * ratio + phaseY]);
+    assert.equal(sprite.getContext('2d').shadowBlur, 12 * ratio);
+    assert.deepEqual(calls(board, 'drawImage').at(-1).args,
+      [sprite, (Math.floor(30 * ratio) - padding) / ratio, (Math.floor(60 * ratio) - padding) / ratio,
+        sprite.width / ratio, sprite.height / ratio]);
+    assert.deepEqual(calls(board, 'clearRect').at(-1).args, [0, 0, 300, 600]);
+    assert.deepEqual(calls(preview, 'clearRect').at(-1).args, [0, 0, 120, 120]);
+    const blocks = calls(preview, 'drawImage');
+    const xs = blocks.map(({ args }) =>
+      args[1] + 18 + calls(args[0], 'setTransform')[0].args[4] / ratio);
+    assert.equal((Math.min(...xs) + Math.max(...xs) + 24) / 2, 60);
+    assert.equal(game.run('state.particles.every((p) => p.x >= 0 && p.x < 300 && p.y === 585)'), true);
+    assert.equal(board.getContext('2d').lineWidth, 1 / ratio);
+    const gridX = calls(board, 'moveTo')[0].args[0] * ratio;
+    assert.equal(gridX % 1, 0.5);
+  });
+}
+
+test('display-scale changes rebuild artwork without resetting gameplay or scheduling frames', () => {
+  const game = loadGame();
+  game.run(`
+    startGame();
+    state.score = 123;
+    state.piece.y = 5;
+    spawnParticles(19);
+    const originalBoard = state.board;
+    const originalPiece = state.piece;
+    draw();
+  `);
+  const oldSprites = game.run('[...blockSprites.values()]');
+  const frame = game.frames.keys().next().value;
+  for (const [ratio, event] of [[2, 'change'], [1.25, 'resize'], [1, 'change']]) {
+    game.window.devicePixelRatio = ratio;
+    if (event === 'change') game.queries.at(-1).dispatch('change');
+    else game.window.dispatch('resize');
+    assert.equal(game.elements.get('board').width, 300 * ratio);
+    assert.equal(game.elements.get('next').width, 120 * ratio);
+    assert.equal(game.run('state.board === originalBoard && state.piece === originalPiece'), true);
+    assert.equal(game.run('state.score'), 123);
+    assert.equal(game.run('state.piece.y'), 5);
+    assert.equal(game.run('state.particles.length'), 40);
+    assert.equal(game.run('[...blockSprites.values()]').some((sprite) => oldSprites.includes(sprite)), false);
+    assert.equal(game.frames.size, 1);
+    assert.equal(game.frames.keys().next().value, frame);
+    const count = game.queries.length;
+    game.window.dispatch('resize');
+    assert.equal(game.queries.length, count);
+  }
+});
+
+test('markup labels controls, canvases, the live stats, and the non-modal dialog', () => {
+  for (const [id, label] of [
+    ['start-btn', 'Start game'], ['pause-btn', 'Pause game'], ['restart-btn', 'Restart game'],
+  ]) {
+    assert.match(html, new RegExp(`<button[^>]*id="${id}"[^>]*aria-label="${label}"`));
+  }
+  assert.match(html, /<canvas[^>]*id="board"[^>]*role="img"[^>]*aria-label="Block Drop game board"/);
+  assert.match(html, /<canvas[^>]*id="board"[^>]*tabindex="0"/);
+  assert.match(html, /<canvas[^>]*id="next"[^>]*role="img"[^>]*aria-label="Next piece preview"/);
+  assert.match(html, /role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
+  assert.match(html, /id="overlay"[^>]*role="dialog"[^>]*aria-labelledby="overlay-title"[^>]*aria-describedby="overlay-text"/);
+  assert.doesNotMatch(html, /aria-modal="true"/);
+});
+
+test('accessible action names and focus track start, pause, resume, game over, and restart', () => {
+  const game = loadGame();
+  const board = game.elements.get('board');
+  const start = game.elements.get('start-btn');
+  const pause = game.elements.get('pause-btn');
+  const overlay = game.elements.get('overlay');
+  assert.equal(game.document.activeElement, start);
+  start.dispatch('click');
+  assert.equal(game.document.activeElement, board);
+  assert.equal(overlay.classList.contains('hidden'), true);
+  assert.equal(pause.getAttribute('aria-label'), 'Pause game');
+  assert.equal(pause.disabled, false);
+  pause.dispatch('click');
+  assert.equal(start.getAttribute('aria-label'), 'Resume game');
+  assert.equal(pause.getAttribute('aria-label'), 'Resume game');
+  assert.equal(game.document.activeElement, start);
+  assert.equal(overlay.classList.contains('hidden'), false);
+  start.dispatch('click');
+  assert.equal(game.document.activeElement, board);
+  assert.equal(pause.getAttribute('aria-label'), 'Pause game');
+  game.run('endGame()');
+  assert.equal(start.getAttribute('aria-label'), 'Play again');
+  assert.equal(pause.disabled, true);
+  assert.equal(game.document.activeElement, start);
+  start.dispatch('click');
+  assert.equal(game.document.activeElement, board);
+  assert.equal(pause.disabled, false);
+  assert.equal(pause.getAttribute('aria-label'), 'Pause game');
+  game.run('state.nextType = "T"; drawNext()');
+  assert.equal(game.elements.get('next').getAttribute('aria-label'), 'Next piece: T');
+});
+
+test('stats include hard-drop points without a line clear and announce level changes and resets', () => {
+  const game = loadGame();
+  game.run('startGame(); state.piece = createPiece("O"); hardDrop()');
+  assert.equal(game.elements.get('score').textContent, '36');
+  assert.equal(game.elements.get('lines').textContent, '0');
+  assert.equal(game.elements.get('level').textContent, '1');
+  game.run(`
+    state.lines = 9;
+    state.board[ROWS - 1].fill('I');
+    clearLines();
+  `);
+  assert.equal(game.elements.get('score').textContent, '136');
+  assert.equal(game.elements.get('lines').textContent, '10');
+  assert.equal(game.elements.get('level').textContent, '2');
+  game.run('startGame()');
+  assert.equal(game.elements.get('score').textContent, '0');
+  assert.equal(game.elements.get('lines').textContent, '0');
+  assert.equal(game.elements.get('level').textContent, '1');
+});
+
+test('keyboard shortcuts preserve native button activation, browser shortcuts, and paused state', () => {
+  const game = loadGame();
+  game.run('startGame(); state.piece = createPiece("O")');
+  const board = game.elements.get('board');
+  const start = game.elements.get('start-btn');
+  const originalY = game.run('state.piece.y');
+  for (const event of [
+    { code: 'Space', target: game.elements.get('pause-btn') },
+    { code: 'Enter', target: start },
+    { code: 'ArrowDown', target: board, ctrlKey: true },
+    { code: 'ArrowDown', target: board, altKey: true },
+    { code: 'ArrowDown', target: board, metaKey: true },
+  ]) {
+    game.document.dispatch('keydown', {
+      ...event,
+      preventDefault() { assert.fail('Native keyboard behavior must not be prevented'); },
+    });
+    assert.equal(game.run('state.piece.y'), originalY);
+  }
+  game.run('togglePause()');
+  for (const code of ['Space', 'ArrowDown', 'ArrowLeft', 'ArrowUp']) {
+    game.document.dispatch('keydown', {
+      code, target: start,
+      preventDefault() { assert.fail('Paused gameplay must not consume input'); },
+    });
+    assert.equal(game.run('state.piece.y'), originalY);
+  }
+  let prevented = false;
+  game.document.dispatch('keydown', {
+    code: 'KeyP', target: start,
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(game.run('state.paused'), false);
+  assert.equal(game.document.activeElement, board);
 });
