@@ -1,6 +1,6 @@
 # Block Drop
 
-A falling-blocks puzzle game for the browser. It uses one `<canvas>` and plain JavaScript.
+A falling-blocks puzzle game for the browser. It uses canvas rendering and plain JavaScript.
 
 ## Run
 
@@ -38,6 +38,26 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Rendering
+
+The board and next-piece preview use device-pixel-ratio-scaled backing stores
+while keeping their layout and gameplay coordinates in CSS pixels. Resizing or
+changing display scale refreshes the canvases and their cached block sprites.
+Gradients and glow are rendered once per color and block size at each display
+scale, then reused for board, active-piece, ghost, and preview drawing.
+Restarting replaces the pending animation frame rather than adding another loop.
+
+## Tests
+
+With Node.js 18 or newer installed, run the dependency-free regression tests:
+
+```bash
+node --test block-drop/game.test.js
+```
+
+The suite covers restart scheduling, sprite reuse, canvas scaling, preview
+centering, and particle coordinates.
+
 ## Files
 
 | File | Purpose |
@@ -45,3 +65,4 @@ A hard drop gives 2 points for each row the piece falls.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
+| `game.test.js` | Rendering and restart regression tests |
