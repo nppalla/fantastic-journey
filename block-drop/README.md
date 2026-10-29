@@ -15,9 +15,9 @@ npx serve .
 | Key | Action |
 | --- | --- |
 | Left / Right arrow | Move the piece |
-| Space | Rotate the piece |
+| Up arrow | Rotate the piece |
 | Down arrow | Soft drop |
-| Up arrow | Hard drop |
+| Space | Hard drop |
 | P | Pause or resume |
 
 ## Rules
