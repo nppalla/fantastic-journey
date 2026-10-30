@@ -12,6 +12,49 @@ function checkRendering() {
   const check = (condition, message) => {
     if (!condition) throw new Error(message);
   };
+  for (const [button, name] of [
+    [startBtn, 'Start game'], [pauseBtn, 'Pause game'], [restartBtn, 'Restart game'],
+  ]) {
+    check(button.getAttribute('aria-label') === name, 'Icon buttons must have descriptive names');
+    check(button.type === 'button', 'Game controls must be native buttons');
+  }
+  check(pauseBtn.disabled, 'Pause must be disabled before starting');
+  for (const target of [canvas, nextCanvas]) {
+    check(target.getAttribute('role') === 'img' && target.getAttribute('aria-label'),
+      'Both canvases must have named image semantics');
+    check(target.textContent.trim(), 'Both canvases must have fallback text');
+  }
+  check(canvas.tabIndex === 0 && document.getElementById(canvas.getAttribute('aria-describedby')),
+    'The board must be focusable and reference keyboard instructions');
+  const stats = document.querySelector('.stats');
+  check(stats.getAttribute('role') === 'status' && stats.getAttribute('aria-live') === 'polite'
+    && stats.getAttribute('aria-atomic') === 'true', 'Stats must be a polite, atomic live status');
+  check(overlay.getAttribute('role') === 'dialog' && overlay.getAttribute('aria-modal') !== 'true',
+    'The overlay must expose a non-modal dialog without hiding side-panel controls');
+  check(document.getElementById(overlay.getAttribute('aria-labelledby')) === overlayTitle
+    && document.getElementById(overlay.getAttribute('aria-describedby')) === overlayText,
+  'The dialog must reference its title and description');
+  const ratio = window.devicePixelRatio;
+  const checkDimensions = (scale) => {
+    for (const [target, width, height] of [[canvas, 300, 600], [nextCanvas, 120, 120]]) {
+      check(target.width === Math.round(width * scale) && target.height === Math.round(height * scale),
+        'Canvas backing stores must match the device scale');
+      const bounds = target.getBoundingClientRect();
+      check(bounds.width === width && bounds.height === height, 'CSS canvas dimensions must not grow');
+      const transform = target.getContext('2d').getTransform();
+      check(transform.a === scale && transform.d === scale, 'Canvas transforms must scale logical pixels');
+    }
+  };
+  checkDimensions(ratio);
+  const gridX = Math.round(30 * ratio);
+  const gridY = Math.round(5 * ratio);
+  const gridPixels = ctx.getImageData(gridX - 1, gridY, 3, 1).data;
+  check(gridPixels[3] === 0 && gridPixels[7] > 0 && gridPixels[11] === 0,
+    'Vertical grid lines must occupy exactly one device pixel');
+  const gridRow = ctx.getImageData(Math.round(5 * ratio), gridX - 1, 1, 3).data;
+  check(gridRow[3] === 0 && gridRow[7] > 0 && gridRow[11] === 0,
+    'Horizontal grid lines must occupy exactly one device pixel');
+
   startGame();
   const firstFrame = pendingFrames.keys().next().value;
   for (let i = 0; i < 10; i++) startGame();
@@ -61,13 +104,15 @@ function checkRendering() {
 
   const cachedDrawBlock = drawBlock;
   const originalDrawBlock = (context, px, py, color, size, alpha = 1) => {
+    px = Math.round(px * ratio) / ratio;
+    py = Math.round(py * ratio) / ratio;
     const gradient = context.createLinearGradient(px, py, px + size, py + size);
     gradient.addColorStop(0, lighten(color, 0.35));
     gradient.addColorStop(1, color);
     context.save();
     context.globalAlpha = alpha;
     context.shadowColor = color;
-    context.shadowBlur = 12;
+    context.shadowBlur = 12 * ratio;
     context.fillStyle = gradient;
     context.beginPath();
     context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
@@ -110,7 +155,75 @@ function checkRendering() {
   check(previewDifferences.every((difference) => difference < 1),
     'Cached blocks must preserve every next-piece preview');
 
+  const snapshot = JSON.stringify(state);
+  const pendingFrame = pendingFrames.keys().next().value;
+  for (const scale of [2, 1.25, 1]) {
+    const oldSprites = new Set(blockSprites.values());
+    const changed = scale !== pixelRatio;
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: scale });
+    window.dispatchEvent(new Event('resize'));
+    checkDimensions(scale);
+    check(JSON.stringify(state) === snapshot, 'Display-scale changes must not reset gameplay');
+    check(pendingFrames.size === 1 && pendingFrames.has(pendingFrame),
+      'Display-scale changes must not start another render loop');
+    check(!changed || [...blockSprites.values()].every((sprite) => !oldSprites.has(sprite)),
+      'Display-scale changes must discard old-resolution artwork');
+    check(nextCtx.getImageData(0, 0, nextCanvas.width, nextCanvas.height).data.some((value) => value > 0),
+      'Display-scale changes must redraw the preview immediately');
+    for (const type of 'IJLOSTZ') {
+      state.nextType = type;
+      drawNext();
+    }
+    state.nextType = JSON.parse(snapshot).nextType;
+    drawNext();
+    const count = blockSprites.size;
+    draw();
+    drawNext();
+    check(blockSprites.size === count && count <= 14, 'The sprite cache must remain bounded at each scale');
+  }
+
+  startBtn.click();
+  check(document.activeElement === canvas && overlay.classList.contains('hidden'),
+    'Starting must move focus out of the hidden overlay to the board');
+  check(!pauseBtn.disabled && pauseBtn.getAttribute('aria-label') === 'Pause game',
+    'Starting must enable and name the pause action');
+  pauseBtn.focus();
+  const beforeKey = JSON.stringify(state);
+  const space = new KeyboardEvent('keydown', { code: 'Space', bubbles: true, cancelable: true });
+  pauseBtn.dispatchEvent(space);
+  check(!space.defaultPrevented && JSON.stringify(state) === beforeKey,
+    'Space on a native button must not be prevented or drop a piece');
+  pauseBtn.click();
+  check(state.paused && document.activeElement === startBtn,
+    'Pausing must focus the dialog action');
+  check(startBtn.getAttribute('aria-label') === 'Resume game'
+    && pauseBtn.getAttribute('aria-label') === 'Resume game', 'Both resume actions must be named');
+  startBtn.click();
+  check(!state.paused && document.activeElement === canvas, 'Resuming must restore board focus');
+  state.lines = 9;
+  state.board[19].fill('I');
+  clearLines();
+  check(scoreEl.textContent === '100' && linesEl.textContent === '10' && levelEl.textContent === '2',
+    'Line clears and level changes must update the visible live stats');
+  state.piece = createPiece('O');
+  hardDrop();
+  check(state.score > 100 && scoreEl.textContent === state.score.toLocaleString(),
+    'Hard-drop points must update live stats even without a line clear');
+  check(nextCanvas.getAttribute('aria-label') === `Next piece: ${state.nextType}`,
+    'The preview must identify the next shape');
+  endGame();
+  check(document.activeElement === startBtn && startBtn.getAttribute('aria-label') === 'Restart game'
+    && pauseBtn.disabled, 'Game over must focus the named restart action and disable pause');
+  check(overlayText.textContent === `Final score: ${state.score.toLocaleString()}`,
+    'The game-over dialog must describe the final score');
+  startBtn.click();
+  check(!state.over && document.activeElement === canvas && !pauseBtn.disabled,
+    'Restarting must restore playable focus and controls');
+  check(scoreEl.textContent === '0' && linesEl.textContent === '0' && levelEl.textContent === '1',
+    'Restarting must reset live stats');
+
   return {
+    devicePixelRatio: ratio,
     coldMs: cold,
     meanMs: timings.reduce((sum, time) => sum + time, 0) / timings.length,
     p95Ms: p95,
@@ -122,11 +235,12 @@ function checkRendering() {
   };
 }
 
-test('Chromium preserves artwork and renders a dense board below the frame budget', (t) => {
+function testRendering(ratio, t) {
   const directory = mkdtempSync(join(tmpdir(), 'block-drop-rendering-'));
   try {
     const html = readFileSync(join(__dirname, 'index.html'), 'utf8');
     const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
+    const styles = readFileSync(join(__dirname, 'style.css'), 'utf8');
     const harness = `
       const pendingFrames = new Map();
       let frameId = -1;
@@ -140,7 +254,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
       });
     `;
     const page = html
-      .replace(/<link[^>]+style\.css[^>]*>/, '')
+      .replace(/<link[^>]+style\.css[^>]*>/, `<style>${styles}</style>`)
       .replace('<script src="game.js"></script>', `
         <pre id="result"></pre>
         <script>${harness}</script>
@@ -158,6 +272,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
     writeFileSync(file, page);
     const browser = spawnSync(process.env.CHROMIUM || 'chromium', [
       '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      `--force-device-scale-factor=${ratio}`,
       `--user-data-dir=${join(directory, 'profile')}`, '--dump-dom', pathToFileURL(file).href,
     ], { encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024 });
     assert.ifError(browser.error);
@@ -166,8 +281,14 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
     assert.ok(match, `Chromium did not return rendering results: ${browser.stderr}`);
     const result = JSON.parse(match[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
     assert.equal(result.error, undefined, result.error);
+    assert.equal(result.devicePixelRatio, ratio);
     t.diagnostic(JSON.stringify(result));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
+}
+
+for (const ratio of [1, 1.25, 2]) {
+  test(`Chromium DPR ${ratio}: sharp artwork, accessible controls, and drawing below the frame budget`,
+    (t) => testRendering(ratio, t));
+}

@@ -15,9 +15,9 @@ npx serve .
 | Key | Action |
 | --- | --- |
 | Left / Right arrow | Move the piece |
-| Space | Rotate the piece |
+| Up arrow | Rotate the piece |
 | Down arrow | Soft drop |
-| Up arrow | Hard drop |
+| Space | Hard drop |
 | P | Pause or resume |
 
 ## Rules
@@ -38,6 +38,19 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Accessibility
+
+The icon buttons have descriptive names that follow their current action.
+Score, lines, and level changes are announced through a polite, atomic status
+region, including hard-drop points. Unchanged values are not rewritten on frames.
+Both canvases have text labels, and the next-piece label names its current shape.
+
+The start, pause, and game-over overlay is a named non-modal dialog: the side-panel
+controls remain available. Pausing or ending a game focuses its resume/restart
+button; starting or resuming focuses the board and its keyboard instructions.
+Tab still reaches native controls, and Space/Enter activate focused buttons
+without also dropping a piece. Keyboard focus has a visible outline.
+
 ## Rendering
 
 The first game starts one update/draw loop. Restarting resets game state and the
@@ -49,6 +62,15 @@ blurred glow are rendered only when a sprite is first needed; board cells,
 active pieces, ghosts, and the next-piece preview reuse those sprites. Padding
 preserves the glow, and ghost opacity is applied when drawing the cached image.
 Only opacity is changed and restored per block, avoiding full canvas-state saves.
+
+The board and preview keep their 300 x 600 and 120 x 120 CSS-pixel sizes, while
+their backing stores and cached artwork scale with `window.devicePixelRatio`.
+Grid lines use one device pixel, and sprite placement is aligned to device pixels
+to avoid resampling at fractional zoom levels. Glow padding and blur scale too.
+Drawing checks for display-scale changes, and resizing also refreshes the initial
+board before a game starts. Old-resolution sprites are discarded and the preview
+is redrawn without resetting gameplay or starting another animation loop.
+Gameplay, particles, and preview centering continue to use logical CSS pixels.
 
 ## Tests
 
@@ -66,7 +88,9 @@ node --test block-drop/game.test.js block-drop/game.browser.test.js
 
 The browser executable defaults to `chromium`; set `CHROMIUM` to its path if
 needed. The browser check reports cold and warmed full-board drawing times and
-checks the warmed p95 against the issue's 16 ms target. Timings depend on the
+checks the warmed p95 against the issue's 16 ms target at DPR 1, 1.25, and 2.
+It also checks real backing-store dimensions, sharp grid lines, artwork, layout,
+and runtime display-scale changes. Timings depend on the
 machine and browser, so they are not a guarantee for every device.
 
 ## Files
@@ -76,5 +100,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Restart scheduling, input, sprite reuse, and preview regressions |
-| `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
+| `game.test.js` | Restart scheduling, controls, accessible state, DPI scaling, and sprite regressions |
+| `game.browser.test.js` | Real DOM accessibility, canvas appearance, high-DPI layout, and rendering checks |
