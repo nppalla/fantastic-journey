@@ -15,9 +15,9 @@ npx serve .
 | Key | Action |
 | --- | --- |
 | Left / Right arrow | Move the piece |
-| Space | Rotate the piece |
+| Up arrow | Rotate the piece |
 | Down arrow | Soft drop |
-| Up arrow | Hard drop |
+| Space | Hard drop |
 | P | Pause or resume |
 
 ## Rules
@@ -37,6 +37,19 @@ npx serve .
 | 4 | 800 x level |
 
 A hard drop gives 2 points for each row the piece falls.
+
+## Accessibility
+
+The icon buttons have descriptive names that follow their current action.
+Score, lines, and level changes are announced through a polite, atomic status
+region, including hard-drop points. Unchanged values are not rewritten on frames.
+Both canvases have text labels, and the next-piece label names its current shape.
+
+The start, pause, and game-over overlay is a named non-modal dialog: the side-panel
+controls remain available. Pausing or ending a game focuses its resume/restart
+button; starting or resuming focuses the board and its keyboard instructions.
+Tab still reaches native controls, and Space/Enter activate focused buttons
+without also dropping a piece. Keyboard focus has a visible outline.
 
 ## Rendering
 
@@ -87,5 +100,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Restart scheduling, input, DPI scaling, sprite reuse, and preview regressions |
-| `game.browser.test.js` | Real-canvas appearance, high-DPI layout, and dense-board rendering checks |
+| `game.test.js` | Restart scheduling, controls, accessible state, DPI scaling, and sprite regressions |
+| `game.browser.test.js` | Real DOM accessibility, canvas appearance, high-DPI layout, and rendering checks |

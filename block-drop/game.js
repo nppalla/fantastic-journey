@@ -134,6 +134,7 @@ function hardDrop() {
   }
   state.score += distance * 2;
   lockPiece();
+  updateStats();
   state.dropCounter = 0;
 }
 
@@ -345,6 +346,7 @@ function draw() {
 
 function drawNext() {
   nextCtx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+  nextCanvas.setAttribute('aria-label', `Next piece: ${state.nextType}`);
   const shape = SHAPES[state.nextType];
 
   // Center the filled cells, not the whole matrix, so I and O sit in the middle.
@@ -370,42 +372,54 @@ function drawNext() {
 }
 
 function updateStats() {
-  scoreEl.textContent = state.score.toLocaleString();
-  linesEl.textContent = state.lines;
-  levelEl.textContent = state.level;
+  for (const [element, value] of [
+    [scoreEl, state.score.toLocaleString()],
+    [linesEl, String(state.lines)],
+    [levelEl, String(state.level)],
+  ]) {
+    if (element.textContent !== value) element.textContent = value;
+  }
 }
 
-function showOverlay(title, text, buttonLabel) {
+function showOverlay(title, text, buttonLabel, buttonName) {
   overlayTitle.textContent = title;
   overlayText.textContent = text;
   startBtn.innerHTML = buttonLabel;
+  startBtn.setAttribute('aria-label', buttonName);
   overlay.classList.remove('hidden');
+  startBtn.focus({ preventScroll: true });
 }
 
 function hideOverlay() {
   overlay.classList.add('hidden');
+  canvas.focus({ preventScroll: true });
 }
 
 function togglePause() {
   if (!state.running || state.over) return;
   state.paused = !state.paused;
   if (state.paused) {
-    showOverlay('Paused', 'Press P to resume.', '&#9654;');
+    showOverlay('Paused', 'Press P to resume.', '&#9654;', 'Resume game');
     pauseBtn.innerHTML = '&#9654;';
+    pauseBtn.setAttribute('aria-label', 'Resume game');
   } else {
     hideOverlay();
     pauseBtn.innerHTML = '&#10074;&#10074;';
+    pauseBtn.setAttribute('aria-label', 'Pause game');
   }
 }
 
 function endGame() {
   state.over = true;
   state.running = false;
-  showOverlay('Game over', `Final score: ${state.score.toLocaleString()}`, '&#10227;');
+  pauseBtn.disabled = true;
+  showOverlay('Game over', `Final score: ${state.score.toLocaleString()}`, '&#10227;', 'Restart game');
 }
 
 function handleKey(event) {
   if (!state.running || state.over) return;
+  if (event.target?.closest?.('input, select, textarea, [contenteditable]')) return;
+  if (event.code !== 'KeyP' && event.target?.closest?.('button, a')) return;
   switch (event.code) {
     case 'ArrowLeft':
       move(-1);
@@ -462,6 +476,8 @@ function startGame() {
   updateStats();
   hideOverlay();
   pauseBtn.innerHTML = '&#10074;&#10074;';
+  pauseBtn.setAttribute('aria-label', 'Pause game');
+  pauseBtn.disabled = false;
 
   if (animationFrame === null) animationFrame = requestAnimationFrame(update);
 }

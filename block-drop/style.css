@@ -183,6 +183,17 @@ body {
   transform: scale(0.96);
 }
 
+.btn:focus-visible,
+#board:focus-visible {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 3px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .btn.primary {
   flex: none;
   min-width: 64px;

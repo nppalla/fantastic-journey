@@ -12,6 +12,28 @@ function checkRendering() {
   const check = (condition, message) => {
     if (!condition) throw new Error(message);
   };
+  for (const [button, name] of [
+    [startBtn, 'Start game'], [pauseBtn, 'Pause game'], [restartBtn, 'Restart game'],
+  ]) {
+    check(button.getAttribute('aria-label') === name, 'Icon buttons must have descriptive names');
+    check(button.type === 'button', 'Game controls must be native buttons');
+  }
+  check(pauseBtn.disabled, 'Pause must be disabled before starting');
+  for (const target of [canvas, nextCanvas]) {
+    check(target.getAttribute('role') === 'img' && target.getAttribute('aria-label'),
+      'Both canvases must have named image semantics');
+    check(target.textContent.trim(), 'Both canvases must have fallback text');
+  }
+  check(canvas.tabIndex === 0 && document.getElementById(canvas.getAttribute('aria-describedby')),
+    'The board must be focusable and reference keyboard instructions');
+  const stats = document.querySelector('.stats');
+  check(stats.getAttribute('role') === 'status' && stats.getAttribute('aria-live') === 'polite'
+    && stats.getAttribute('aria-atomic') === 'true', 'Stats must be a polite, atomic live status');
+  check(overlay.getAttribute('role') === 'dialog' && overlay.getAttribute('aria-modal') !== 'true',
+    'The overlay must expose a non-modal dialog without hiding side-panel controls');
+  check(document.getElementById(overlay.getAttribute('aria-labelledby')) === overlayTitle
+    && document.getElementById(overlay.getAttribute('aria-describedby')) === overlayText,
+  'The dialog must reference its title and description');
   const ratio = window.devicePixelRatio;
   const checkDimensions = (scale) => {
     for (const [target, width, height] of [[canvas, 300, 600], [nextCanvas, 120, 120]]) {
@@ -160,6 +182,46 @@ function checkRendering() {
     check(blockSprites.size === count && count <= 14, 'The sprite cache must remain bounded at each scale');
   }
 
+  startBtn.click();
+  check(document.activeElement === canvas && overlay.classList.contains('hidden'),
+    'Starting must move focus out of the hidden overlay to the board');
+  check(!pauseBtn.disabled && pauseBtn.getAttribute('aria-label') === 'Pause game',
+    'Starting must enable and name the pause action');
+  pauseBtn.focus();
+  const beforeKey = JSON.stringify(state);
+  const space = new KeyboardEvent('keydown', { code: 'Space', bubbles: true, cancelable: true });
+  pauseBtn.dispatchEvent(space);
+  check(!space.defaultPrevented && JSON.stringify(state) === beforeKey,
+    'Space on a native button must not be prevented or drop a piece');
+  pauseBtn.click();
+  check(state.paused && document.activeElement === startBtn,
+    'Pausing must focus the dialog action');
+  check(startBtn.getAttribute('aria-label') === 'Resume game'
+    && pauseBtn.getAttribute('aria-label') === 'Resume game', 'Both resume actions must be named');
+  startBtn.click();
+  check(!state.paused && document.activeElement === canvas, 'Resuming must restore board focus');
+  state.lines = 9;
+  state.board[19].fill('I');
+  clearLines();
+  check(scoreEl.textContent === '100' && linesEl.textContent === '10' && levelEl.textContent === '2',
+    'Line clears and level changes must update the visible live stats');
+  state.piece = createPiece('O');
+  hardDrop();
+  check(state.score > 100 && scoreEl.textContent === state.score.toLocaleString(),
+    'Hard-drop points must update live stats even without a line clear');
+  check(nextCanvas.getAttribute('aria-label') === `Next piece: ${state.nextType}`,
+    'The preview must identify the next shape');
+  endGame();
+  check(document.activeElement === startBtn && startBtn.getAttribute('aria-label') === 'Restart game'
+    && pauseBtn.disabled, 'Game over must focus the named restart action and disable pause');
+  check(overlayText.textContent === `Final score: ${state.score.toLocaleString()}`,
+    'The game-over dialog must describe the final score');
+  startBtn.click();
+  check(!state.over && document.activeElement === canvas && !pauseBtn.disabled,
+    'Restarting must restore playable focus and controls');
+  check(scoreEl.textContent === '0' && linesEl.textContent === '0' && levelEl.textContent === '1',
+    'Restarting must reset live stats');
+
   return {
     devicePixelRatio: ratio,
     coldMs: cold,
@@ -227,6 +289,6 @@ function testRendering(ratio, t) {
 }
 
 for (const ratio of [1, 1.25, 2]) {
-  test(`Chromium DPR ${ratio}: sharp artwork and dense-board drawing below the frame budget`,
+  test(`Chromium DPR ${ratio}: sharp artwork, accessible controls, and drawing below the frame budget`,
     (t) => testRendering(ratio, t));
 }

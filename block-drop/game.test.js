@@ -50,10 +50,18 @@ function loadGame(pixelRatio = 1) {
   function createElement() {
     const listeners = new Map();
     const classes = new Set();
+    const attributes = new Map();
+    let textContent = '';
     return {
+      get textContent() { return textContent; },
+      set textContent(value) { textContent = String(value); },
+      setAttribute: (name, value) => attributes.set(name, String(value)),
+      getAttribute: (name) => attributes.get(name) ?? null,
+      focus() { document.activeElement = this; },
       classList: {
         add: (name) => classes.add(name),
         remove: (name) => classes.delete(name),
+        contains: (name) => classes.has(name),
       },
       addEventListener(name, callback) {
         if (!listeners.has(name)) listeners.set(name, new Set());
@@ -407,4 +415,125 @@ test('high-DPI particles and clearing rectangles stay in logical board coordinat
   assert.equal(game.run('state.particles.length'), 40);
   assert.equal(game.run('state.particles.every((p) => p.x === 297 && p.y === 585)'), true);
   assert.deepEqual(calls(game.elements.get('board'), 'clearRect').at(-1).args, [0, 0, 300, 600]);
+});
+
+test('control names and focus follow start, pause, resume, game over, and restart', () => {
+  const game = loadGame();
+  const start = game.elements.get('start-btn');
+  const pause = game.elements.get('pause-btn');
+  const board = game.elements.get('board');
+  start.dispatch('click');
+  assert.equal(game.document.activeElement, board);
+  assert.equal(pause.disabled, false);
+  assert.equal(pause.getAttribute('aria-label'), 'Pause game');
+  pause.dispatch('click');
+  assert.equal(game.document.activeElement, start);
+  assert.equal(start.getAttribute('aria-label'), 'Resume game');
+  assert.equal(pause.getAttribute('aria-label'), 'Resume game');
+  assert.equal(game.elements.get('overlay').classList.contains('hidden'), false);
+  start.dispatch('click');
+  assert.equal(game.document.activeElement, board);
+  assert.equal(pause.getAttribute('aria-label'), 'Pause game');
+  game.run('state.score = 123; endGame()');
+  assert.equal(game.document.activeElement, start);
+  assert.equal(start.getAttribute('aria-label'), 'Restart game');
+  assert.equal(pause.disabled, true);
+  assert.equal(game.elements.get('overlay-text').textContent, 'Final score: 123');
+  start.dispatch('click');
+  assert.equal(game.document.activeElement, board);
+  assert.equal(pause.disabled, false);
+  assert.equal(pause.getAttribute('aria-label'), 'Pause game');
+});
+
+test('line clears, level changes, hard drops, and restarts update accessible stats', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run(`
+    state.lines = 9;
+    state.board[19].fill('I');
+    clearLines();
+  `);
+  assert.equal(game.elements.get('score').textContent, '100');
+  assert.equal(game.elements.get('lines').textContent, '10');
+  assert.equal(game.elements.get('level').textContent, '2');
+  game.run("state.piece = createPiece('O'); hardDrop()");
+  assert.equal(game.elements.get('score').textContent, game.run('state.score.toLocaleString()'));
+  assert.ok(game.run('state.score > 100'));
+  game.elements.get('restart-btn').dispatch('click');
+  assert.equal(game.elements.get('score').textContent, '0');
+  assert.equal(game.elements.get('lines').textContent, '0');
+  assert.equal(game.elements.get('level').textContent, '1');
+});
+
+test('unchanged stats and animation frames do not rewrite the live region', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  let mutations = 0;
+  for (const id of ['score', 'lines', 'level']) {
+    const element = game.elements.get(id);
+    let value = element.textContent;
+    Object.defineProperty(element, 'textContent', {
+      get: () => value,
+      set(text) { mutations++; value = text; },
+    });
+  }
+  game.run('updateStats()');
+  for (const time of [16, 32, 48]) game.frame(time);
+  assert.equal(mutations, 0);
+  game.run('state.score = 20; updateStats()');
+  assert.equal(mutations, 1);
+});
+
+test('keyboard events on native controls are not consumed as game actions', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  const before = game.run('JSON.stringify(state)');
+  for (const code of ['Space', 'ArrowUp', 'ArrowDown']) {
+    game.document.dispatch('keydown', {
+      code,
+      target: {
+        closest(selector) {
+          return selector.includes('button') ? game.elements.get('pause-btn') : null;
+        },
+      },
+      preventDefault() { assert.fail('Native control keys must retain their default action'); },
+    });
+  }
+  assert.equal(game.run('JSON.stringify(state)'), before);
+});
+
+test('P resumes from the focused dialog action without intercepting text input', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.elements.get('pause-btn').dispatch('click');
+  let prevented = 0;
+  game.document.dispatch('keydown', {
+    code: 'KeyP',
+    target: { closest: (selector) => selector.includes('button') ? game.elements.get('start-btn') : null },
+    preventDefault() { prevented++; },
+  });
+  assert.equal(game.run('state.paused'), false);
+  assert.equal(game.document.activeElement, game.elements.get('board'));
+  assert.equal(prevented, 1);
+  game.document.dispatch('keydown', {
+    code: 'KeyP',
+    target: { closest: (selector) => selector.includes('input') ? {} : null },
+    preventDefault() { assert.fail('Typing P must not be prevented'); },
+  });
+  assert.equal(game.run('state.paused'), false);
+});
+
+test('documented rotation and hard-drop keys match gameplay', () => {
+  const readme = readFileSync(join(__dirname, 'README.md'), 'utf8');
+  assert.match(readme, /\| Up arrow \| Rotate the piece \|/);
+  assert.match(readme, /\| Space \| Hard drop \|/);
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run("state.piece = createPiece('T')");
+  const shape = game.run('JSON.stringify(state.piece.shape)');
+  game.document.dispatch('keydown', { code: 'ArrowUp', preventDefault() {} });
+  assert.notEqual(game.run('JSON.stringify(state.piece.shape)'), shape);
+  game.document.dispatch('keydown', { code: 'Space', preventDefault() {} });
+  assert.ok(game.run('state.score > 0'));
+  assert.equal(game.run('state.board.some((row) => row.some(Boolean))'), true);
 });
