@@ -26,7 +26,22 @@ function checkRendering() {
   draw = originalDraw;
   check(draws === 1 && pendingFrames.size === 1, 'Each frame must update and draw once');
 
+  const drawWithoutBoardCache = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGrid(ctx);
+    state.board.forEach((row, y) => {
+      row.forEach((type, x) => {
+        if (type) drawBlock(ctx, x * BLOCK, y * BLOCK, COLORS[type], BLOCK);
+      });
+    });
+    if (state.piece && !state.over) {
+      drawPiece(state.piece, ghostY(), 0.18);
+      drawPiece(state.piece, state.piece.y, 1);
+    }
+    drawParticles();
+  };
   state.board = createBoard().map((row, y) => row.map((_, x) => 'IJLOSTZ'[(x + y) % 7]));
+  boardDirty = true;
   state.piece = createPiece('T');
   state.piece.y = 5;
   blockSprites.clear();
@@ -35,6 +50,12 @@ function checkRendering() {
   CanvasRenderingContext2D.prototype.createLinearGradient = function (...args) {
     gradients++;
     return originalGradient.apply(this, args);
+  };
+  let settledBlocks = 0;
+  const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
+  CanvasRenderingContext2D.prototype.drawImage = function (...args) {
+    if (this === boardCtx) settledBlocks++;
+    return originalDrawImage.apply(this, args);
   };
 
   const measure = () => {
@@ -49,15 +70,24 @@ function checkRendering() {
     drawNext();
   }
   const warmedGradients = gradients;
+  const warmedSettledBlocks = settledBlocks;
+  check(warmedSettledBlocks === 200, 'Cold dense-board layer must contain all 200 settled cells');
   for (let i = 0; i < 20; i++) measure();
   const timings = Array.from({ length: 160 }, measure).sort((a, b) => a - b);
   check(gradients === warmedGradients, 'Warmed board drawing must not create gradients');
+  check(settledBlocks === warmedSettledBlocks, 'Unchanged frames must not redraw settled cells');
   for (const type of 'IJLOSTZ') {
     state.nextType = type;
     drawNext();
   }
   check(gradients === warmedGradients, 'Warmed preview drawing must not create gradients');
   CanvasRenderingContext2D.prototype.createLinearGradient = originalGradient;
+  CanvasRenderingContext2D.prototype.drawImage = originalDrawImage;
+
+  const rebuildTimings = Array.from({ length: 80 }, () => {
+    boardDirty = true;
+    return measure();
+  }).sort((a, b) => a - b);
 
   const cachedDrawBlock = drawBlock;
   const originalDrawBlock = (context, px, py, color, size, alpha = 1) => {
@@ -74,12 +104,12 @@ function checkRendering() {
     context.fill();
     context.restore();
   };
-  const compareArtwork = (context, target, render) => {
+  const compareArtwork = (context, target, render, referenceRender = render) => {
     render();
     const cached = context.getImageData(0, 0, target.width, target.height).data;
     drawBlock = originalDrawBlock;
     try {
-      render();
+      referenceRender();
       const original = context.getImageData(0, 0, target.width, target.height).data;
       let difference = 0;
       for (let i = 0; i < cached.length; i++) difference += Math.abs(cached[i] - original[i]);
@@ -88,21 +118,56 @@ function checkRendering() {
       drawBlock = cachedDrawBlock;
     }
   };
-  const channelDifference = compareArtwork(ctx, canvas, draw);
+  const channelDifference = compareArtwork(ctx, canvas, draw, drawWithoutBoardCache);
   check(channelDifference < 1, 'Cached blocks must preserve the original dense-board artwork');
 
+  draw = drawWithoutBoardCache;
+  for (let i = 0; i < 10; i++) measure();
+  const spriteOnlyTimings = Array.from({ length: 80 }, measure).sort((a, b) => a - b);
   drawBlock = originalDrawBlock;
   for (let i = 0; i < 10; i++) measure();
   const originalTimings = Array.from({ length: 80 }, measure).sort((a, b) => a - b);
   drawBlock = cachedDrawBlock;
+  draw = originalDraw;
   const p95 = timings[Math.floor(timings.length * 0.95)];
   check(p95 < 16, `Warmed full-board drawing p95 was ${p95.toFixed(2)} ms, expected below 16 ms`);
+  const rebuildP95 = rebuildTimings[Math.floor(rebuildTimings.length * 0.95)];
+  check(rebuildP95 < 16, `Layer rebuild p95 was ${rebuildP95.toFixed(2)} ms, expected below 16 ms`);
 
   state.board = createBoard();
+  boardDirty = true;
   state.piece = createPiece('O');
   state.piece.y = 1;
-  const ghostDifference = compareArtwork(ctx, canvas, draw);
+  const ghostDifference = compareArtwork(ctx, canvas, draw, drawWithoutBoardCache);
   check(ghostDifference < 1, 'Cached blocks must preserve separate active and translucent ghost pieces');
+  const transitionDifferences = [];
+  const checkBoardArtwork = (message) => {
+    const difference = compareArtwork(ctx, canvas, draw, drawWithoutBoardCache);
+    transitionDifferences.push(difference);
+    check(difference < 1, message);
+  };
+  move(1);
+  rotate();
+  softDrop();
+  checkBoardArtwork('Moving pieces must not leave trails on the cached layer');
+  hardDrop();
+  checkBoardArtwork('Locked pieces must appear in the settled layer');
+  state.board = createBoard();
+  state.board[19].fill('I');
+  state.board[18][0] = 'T';
+  boardDirty = true;
+  draw();
+  clearLines();
+  checkBoardArtwork('Cleared cells must disappear and shifted rows must retain their artwork');
+  state.particles[0].life = 0.5;
+  updateParticles(16);
+  checkBoardArtwork('Particles must remain visible above the cached layer');
+  startGame();
+  checkBoardArtwork('Restarting must remove all previous settled cells');
+  state.piece = createPiece('O');
+  state.piece.y = -1;
+  lockPiece();
+  checkBoardArtwork('Top-out must preserve cells written during the final lock');
   const previewDifferences = [...'IJLOSTZ'].map((type) => {
     state.nextType = type;
     return compareArtwork(nextCtx, nextCanvas, drawNext);
@@ -114,10 +179,14 @@ function checkRendering() {
     coldMs: cold,
     meanMs: timings.reduce((sum, time) => sum + time, 0) / timings.length,
     p95Ms: p95,
+    rebuildP95Ms: rebuildP95,
+    spriteOnlyMeanMs: spriteOnlyTimings.reduce((sum, time) => sum + time, 0) / spriteOnlyTimings.length,
+    spriteOnlyP95Ms: spriteOnlyTimings[Math.floor(spriteOnlyTimings.length * 0.95)],
     originalMeanMs: originalTimings.reduce((sum, time) => sum + time, 0) / originalTimings.length,
     originalP95Ms: originalTimings[Math.floor(originalTimings.length * 0.95)],
     meanChannelDifference: channelDifference,
     ghostChannelDifference: ghostDifference,
+    maxTransitionChannelDifference: Math.max(...transitionDifferences),
     maxPreviewChannelDifference: Math.max(...previewDifferences),
   };
 }

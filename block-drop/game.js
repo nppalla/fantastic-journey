@@ -34,6 +34,12 @@ const ctx = canvas.getContext('2d');
 canvas.width = COLS * BLOCK;
 canvas.height = ROWS * BLOCK;
 
+const boardCanvas = document.createElement('canvas');
+boardCanvas.width = canvas.width;
+boardCanvas.height = canvas.height;
+const boardCtx = boardCanvas.getContext('2d');
+let boardDirty = true;
+
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
 const blockSprites = new Map();
@@ -143,6 +149,7 @@ function ghostY() {
 
 function lockPiece() {
   const { shape, x, y, type } = state.piece;
+  boardDirty = true;
   shape.forEach((row, r) => {
     row.forEach((filled, c) => {
       if (!filled) return;
@@ -165,6 +172,7 @@ function clearLines() {
     if (state.board[y].every(Boolean)) {
       state.board.splice(y, 1);
       state.board.unshift(Array(COLS).fill(null));
+      boardDirty = true;
       spawnParticles(y);
       cleared++;
     }
@@ -256,21 +264,35 @@ function drawBlock(context, px, py, color, size, alpha = 1) {
   context.globalAlpha = previousAlpha;
 }
 
-function drawGrid() {
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-  ctx.lineWidth = 1;
+function drawGrid(context) {
+  context.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+  context.lineWidth = 1;
   for (let x = 1; x < COLS; x++) {
-    ctx.beginPath();
-    ctx.moveTo(x * BLOCK + 0.5, 0);
-    ctx.lineTo(x * BLOCK + 0.5, canvas.height);
-    ctx.stroke();
+    context.beginPath();
+    context.moveTo(x * BLOCK + 0.5, 0);
+    context.lineTo(x * BLOCK + 0.5, canvas.height);
+    context.stroke();
   }
   for (let y = 1; y < ROWS; y++) {
-    ctx.beginPath();
-    ctx.moveTo(0, y * BLOCK + 0.5);
-    ctx.lineTo(canvas.width, y * BLOCK + 0.5);
-    ctx.stroke();
+    context.beginPath();
+    context.moveTo(0, y * BLOCK + 0.5);
+    context.lineTo(canvas.width, y * BLOCK + 0.5);
+    context.stroke();
   }
+}
+
+function drawSettledBoard() {
+  if (boardDirty) {
+    boardCtx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
+    drawGrid(boardCtx);
+    state.board.forEach((row, y) => {
+      row.forEach((type, x) => {
+        if (type) drawBlock(boardCtx, x * BLOCK, y * BLOCK, COLORS[type], BLOCK);
+      });
+    });
+    boardDirty = false;
+  }
+  ctx.drawImage(boardCanvas, 0, 0);
 }
 
 function drawPiece(piece, offsetY, alpha) {
@@ -296,13 +318,7 @@ function drawParticles() {
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawGrid();
-
-  state.board.forEach((row, y) => {
-    row.forEach((type, x) => {
-      if (type) drawBlock(ctx, x * BLOCK, y * BLOCK, COLORS[type], BLOCK);
-    });
-  });
+  drawSettledBoard();
 
   if (state.piece && !state.over) {
     drawPiece(state.piece, ghostY(), 0.18);
@@ -418,6 +434,7 @@ function update(time = 0) {
 
 function startGame() {
   state.board = createBoard();
+  boardDirty = true;
   state.score = 0;
   state.lines = 0;
   state.level = 1;
