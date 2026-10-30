@@ -105,9 +105,10 @@ function loadGame() {
   });
   const run = (code) => vm.runInContext(code, sandbox);
   run(source);
+  const boardLayer = sprites.shift();
 
   return {
-    elements, document, frames, metrics, sprites, run,
+    elements, document, frames, metrics, sprites, boardLayer, run,
     frame(time) {
       now = time;
       const callbacks = [...frames.entries()];
@@ -201,8 +202,10 @@ test('restarting registers keyboard input only once', () => {
 
 test('dense-board drawing reuses gradient and glow sprites for both block sizes', () => {
   const game = loadGame();
+  const initialGridStrokes = calls(game.boardLayer, 'stroke').length;
   game.run(`
     state.board = createBoard().map((row, y) => row.map((_, x) => 'IJLOSTZ'[(x + y) % 7]));
+    boardDirty = true;
     state.piece = createPiece('T');
     draw();
     for (const type of 'IJLOSTZ') {
@@ -215,8 +218,13 @@ test('dense-board drawing reuses gradient and glow sprites for both block sizes'
 
   const board = game.elements.get('board');
   const before = calls(board, 'drawImage').length;
+  assert.equal(calls(game.boardLayer, 'drawImage').length, 200);
+  assert.equal(calls(game.boardLayer, 'stroke').length, initialGridStrokes + 28);
   game.run('for (let i = 0; i < 100; i++) { draw(); drawNext(); }');
-  assert.equal(calls(board, 'drawImage').length - before, 100 * 208);
+  assert.equal(calls(board, 'drawImage').length - before, 100 * 9);
+  assert.equal(calls(game.boardLayer, 'drawImage').length, 200);
+  assert.equal(calls(game.boardLayer, 'stroke').length, initialGridStrokes + 28);
+  assert.equal(calls(board, 'stroke').length, 0);
   assert.equal(game.sprites.length, 14);
   assert.deepEqual(game.metrics, { gradients: 14, shadowFills: 14, hexParses: 14 });
   assert.equal(calls(board, 'roundRect').length, 0);
@@ -243,7 +251,7 @@ test('active and ghost pieces share sprites without leaking drawing opacity', ()
   const game = loadGame();
   game.run("state.piece = createPiece('O'); draw()");
   const board = game.elements.get('board');
-  const blocks = calls(board, 'drawImage');
+  const blocks = calls(board, 'drawImage').filter(({ args }) => args[0] !== game.boardLayer);
   assert.equal(blocks.length, 8);
   assert.equal(new Set(blocks.map(({ args }) => args[0])).size, 1);
   assert.deepEqual(blocks.map(({ alpha }) => alpha), [0.18, 0.18, 0.18, 0.18, 1, 1, 1, 1]);
@@ -281,4 +289,109 @@ test('preview sprites keep every next-piece shape centered at its original size'
     assert.equal(blocks[0].args[0].height, 60);
     assert.deepEqual(calls(preview, 'clearRect').at(-1).args, [0, 0, 120, 120]);
   }
+});
+
+test('moving pieces, particles, pause, and game over reuse the settled layer', () => {
+  const game = loadGame();
+  game.run(`
+    startGame();
+    state.board[19][0] = 'I';
+    state.piece = createPiece('T');
+    state.piece.y = 1;
+    state.particles = [{ x: 10, y: 20, vx: 0.1, vy: 0, life: 1, color: COLORS.I }];
+    draw();
+  `);
+  const layer = game.boardLayer;
+  const rebuilds = calls(layer, 'clearRect').length;
+  const board = game.elements.get('board');
+  const before = calls(board, 'drawImage').length;
+  const surfaces = game.sprites.length;
+  game.run('move(1); rotate(); softDrop(); clearLines(); updateParticles(16); draw()');
+  const blocks = calls(board, 'drawImage').slice(before);
+  assert.equal(blocks.length, 9);
+  assert.equal(blocks[0].args[0], layer);
+  assert.deepEqual(blocks.slice(1).map(({ alpha }) => alpha), [0.18, 0.18, 0.18, 0.18, 1, 1, 1, 1]);
+  assert.equal(blocks[5].args[1], game.run('(state.piece.x + 1) * BLOCK - SPRITE_PADDING'));
+  assert.equal(blocks[5].args[2], game.run('state.piece.y * BLOCK - SPRITE_PADDING'));
+  assert.equal(calls(board, 'fillRect').at(-1).alpha, game.run('state.particles[0].life'));
+  assert.equal(board.getContext('2d').globalAlpha, 1);
+  game.run('togglePause(); draw(); togglePause(); draw(); endGame(); draw()');
+  assert.equal(calls(board, 'drawImage').at(-1).args[0], layer);
+  assert.equal(calls(layer, 'clearRect').length, rebuilds);
+  assert.equal(calls(layer, 'drawImage').length, 1);
+  assert.equal(game.sprites.length, surfaces);
+});
+
+test('locking a piece rebuilds settled artwork once before reusing it', () => {
+  const game = loadGame();
+  game.run("startGame(); state.piece = createPiece('O'); state.piece.y = 18; draw()");
+  const rebuilds = calls(game.boardLayer, 'clearRect').length;
+  game.run('lockPiece(); draw(); draw()');
+  assert.equal(calls(game.boardLayer, 'clearRect').length, rebuilds + 1);
+  assert.equal(calls(game.boardLayer, 'drawImage').length, 4);
+  assert.equal(game.run('state.board[19][4]'), 'O');
+  assert.equal(game.run('boardDirty'), false);
+});
+
+test('clearing a line rebuilds the layer without retaining cleared cells', () => {
+  const game = loadGame();
+  game.run(`
+    state.board[19].fill('I');
+    state.board[18][0] = 'T';
+    boardDirty = true;
+    draw();
+  `);
+  const layer = game.boardLayer;
+  const rebuilds = calls(layer, 'clearRect').length;
+  const images = calls(layer, 'drawImage').length;
+  assert.equal(images, 11);
+  game.run('clearLines(); draw(); draw()');
+  assert.equal(calls(layer, 'clearRect').length, rebuilds + 1);
+  assert.equal(calls(layer, 'drawImage').length, images + 1);
+  assert.deepEqual(calls(layer, 'drawImage').at(-1).args.slice(1), [-18, 552]);
+  assert.equal(game.run('state.board[19][0]'), 'T');
+  assert.equal(game.run('state.lines'), 1);
+});
+
+test('locking a line-clearing piece invalidates the combined layer just once', () => {
+  const game = loadGame();
+  game.run(`
+    startGame();
+    state.board[19].fill('I');
+    state.board[19][4] = state.board[19][5] = null;
+    state.piece = createPiece('O');
+    state.piece.y = 18;
+    draw();
+  `);
+  const rebuilds = calls(game.boardLayer, 'clearRect').length;
+  const images = calls(game.boardLayer, 'drawImage').length;
+  game.run('hardDrop(); draw(); draw()');
+  assert.equal(calls(game.boardLayer, 'clearRect').length, rebuilds + 1);
+  assert.equal(calls(game.boardLayer, 'drawImage').length, images + 2);
+  assert.equal(game.run('state.lines'), 1);
+});
+
+test('restarting clears settled artwork while retaining one board-sized layer', () => {
+  const game = loadGame();
+  game.run("startGame(); state.board[19][0] = 'I'; draw()");
+  const layer = game.boardLayer;
+  assert.equal(layer.width, 300);
+  assert.equal(layer.height, 600);
+  const images = calls(layer, 'drawImage').length;
+  const rebuilds = calls(layer, 'clearRect').length;
+  game.run('startGame(); draw(); draw()');
+  assert.equal(calls(layer, 'clearRect').length, rebuilds + 1);
+  assert.equal(calls(layer, 'drawImage').length, images);
+  assert.deepEqual(calls(layer, 'clearRect').at(-1).args, [0, 0, 300, 600]);
+  assert.equal(game.frames.size, 1);
+});
+
+test('top-out still refreshes cells written during the final piece lock', () => {
+  const game = loadGame();
+  game.run("startGame(); state.piece = createPiece('O'); state.piece.y = -1; draw()");
+  const rebuilds = calls(game.boardLayer, 'clearRect').length;
+  game.run('lockPiece(); draw(); draw()');
+  assert.equal(game.run('state.over'), true);
+  assert.equal(calls(game.boardLayer, 'clearRect').length, rebuilds + 1);
+  assert.equal(calls(game.boardLayer, 'drawImage').length, 2);
 });

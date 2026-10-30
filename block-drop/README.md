@@ -50,6 +50,11 @@ active pieces, ghosts, and the next-piece preview reuse those sprites. Padding
 preserves the glow, and ghost opacity is applied when drawing the cached image.
 Only opacity is changed and restored per block, avoiding full canvas-state saves.
 
+The grid and settled blocks are also cached in one board-sized canvas. Each frame
+copies that layer once, then draws the moving piece, ghost, and particles on top.
+Locking a piece, clearing a line, or restarting invalidates the layer; moving or
+rotating a piece does not redraw unchanged cells or grid lines.
+
 ## Tests
 
 With Node.js 18 or newer installed, run the dependency-free regression tests:
@@ -66,8 +71,11 @@ node --test block-drop/game.test.js block-drop/game.browser.test.js
 
 The browser executable defaults to `chromium`; set `CHROMIUM` to its path if
 needed. The browser check reports cold and warmed full-board drawing times and
-checks the warmed p95 against the issue's 16 ms target. Timings depend on the
-machine and browser, so they are not a guarantee for every device.
+checks both warmed frames and settled-layer rebuild p95 against the issue's
+16 ms target. It also compares against sprite-only and original per-cell
+rendering, and checks artwork after movement, locking, line clears, and restarts.
+Timings depend on the machine and browser, so they are not a guarantee for every
+device.
 
 ## Files
 
@@ -76,5 +84,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Restart scheduling, input, sprite reuse, and preview regressions |
+| `game.test.js` | Restart scheduling, input, sprite/layer reuse, invalidation, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
