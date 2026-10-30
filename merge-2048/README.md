@@ -26,12 +26,24 @@ npx serve .
 - A tile merges only once in each move.
 - A move that changes nothing does not count.
 - Each valid move adds a new 2 or 4 tile.
-- You win when you make a 2048 tile.
+- You win when you make a tile worth 2048 or more. Choose Keep going to continue
+  playing or Try again to start a new game.
 - The game ends when no move can change the board.
 
 ## Scoring
 
 Each merge adds the value of the new tile to your score. The best score is saved in the browser.
+
+## Tests
+
+With Node.js 18 or newer installed, run the dependency-free win regressions:
+
+```bash
+node --test merge-2048/game.test.js
+```
+
+These cover the win threshold, merging two 1024 tiles in every direction,
+the win message, continuing play, and starting again.
 
 ## Files
 
@@ -40,3 +52,4 @@ Each merge adds the value of the new tile to your score. The best score is saved
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
+| `game.test.js` | Win detection and win-message action regressions |

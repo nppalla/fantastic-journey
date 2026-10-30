@@ -12,7 +12,73 @@ function checkRendering() {
   const check = (condition, message) => {
     if (!condition) throw new Error(message);
   };
-  startGame();
+  const ratio = window.devicePixelRatio;
+  for (const [target, width, height] of [[canvas, 300, 600], [nextCanvas, 120, 120]]) {
+    check(target.width === Math.round(width * ratio) && target.height === Math.round(height * ratio),
+      'Canvas backing stores must match the device pixel ratio');
+    const bounds = target.getBoundingClientRect();
+    check(bounds.width === width && bounds.height === height, 'Canvas CSS sizes must stay unchanged');
+    check(target.getContext('2d').getTransform().a === target.width / width,
+      'Canvas drawing must use logical coordinates');
+    check(target.getAttribute('role') === 'img' && target.getAttribute('aria-label'),
+      'Both canvases must have accessible image labels');
+  }
+  ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+  drawGrid();
+  const gridX = Math.round(BLOCK * ratio);
+  const gridPixels = ctx.getImageData(gridX - 1, Math.round(15 * ratio), 3, 1).data;
+  check(gridPixels[3] === 0 && gridPixels[7] > 0 && gridPixels[11] === 0,
+    'Grid lines must align to a single backing-store pixel');
+
+  const stats = document.querySelector('.stats');
+  check(stats.getAttribute('role') === 'status' && stats.getAttribute('aria-live') === 'polite'
+    && stats.getAttribute('aria-atomic') === 'true', 'Statistics must be announced as one polite status');
+  check(startBtn.getAttribute('aria-label') === 'Start game', 'Start control must have a meaningful name');
+  check(restartBtn.getAttribute('aria-label') === 'Restart game', 'Restart control must have a meaningful name');
+  check(pauseBtn.disabled, 'Pause must be disabled until a game starts');
+  check(overlay.getAttribute('role') === 'dialog'
+    && overlay.getAttribute('aria-labelledby') === overlayTitle.id
+    && overlay.getAttribute('aria-describedby') === overlayText.id,
+  'The overlay must expose a named and described dialog');
+  check(canvas.getAttribute('aria-describedby') === 'game-controls',
+    'Board users must be able to discover the keyboard controls');
+  startBtn.focus();
+  startBtn.click();
+  check(document.activeElement === canvas && getComputedStyle(overlay).display === 'none',
+    'Starting must move focus out of the hidden dialog and onto the board');
+  check(nextCanvas.getAttribute('aria-label') === `Next piece: ${state.nextType}`,
+    'The preview must identify the next piece');
+  pauseBtn.click();
+  check(startBtn.getAttribute('aria-label') === 'Resume game'
+    && pauseBtn.getAttribute('aria-label') === 'Resume game'
+    && document.activeElement === startBtn && getComputedStyle(overlay).display !== 'none',
+  'Pausing must expose a resume dialog and focus its action');
+  const space = new KeyboardEvent('keydown', { code: 'Space', bubbles: true, cancelable: true });
+  startBtn.dispatchEvent(space);
+  check(!space.defaultPrevented && state.score === 0,
+    'Game input must not consume Space when a button needs native activation');
+  startBtn.click();
+  check(document.activeElement === canvas && pauseBtn.getAttribute('aria-label') === 'Pause game',
+    'Resuming must restore board focus and the pause control name');
+
+  const observer = new MutationObserver(() => {});
+  observer.observe(stats, { childList: true, subtree: true, characterData: true });
+  state.lines = 9;
+  state.board[19].fill('I');
+  clearLines();
+  check(scoreEl.textContent === '100' && linesEl.textContent === '10' && levelEl.textContent === '2'
+    && observer.takeRecords().length > 0, 'Line clears must update the live score, lines, and level');
+  state.piece = createPiece('O');
+  hardDrop();
+  check(scoreEl.textContent === '136' && observer.takeRecords().length > 0,
+    'Hard drops without line clears must also update the live statistics');
+  observer.disconnect();
+  endGame();
+  check(startBtn.getAttribute('aria-label') === 'Restart game' && pauseBtn.disabled
+    && document.activeElement === startBtn && overlayText.textContent === 'Final score: 136',
+  'Game over must expose a focused restart dialog with the final score');
+  startBtn.click();
+
   const firstFrame = pendingFrames.keys().next().value;
   for (let i = 0; i < 10; i++) startGame();
   check(pendingFrames.size === 1, 'Ten restarts must retain exactly one pending frame');
@@ -61,13 +127,15 @@ function checkRendering() {
 
   const cachedDrawBlock = drawBlock;
   const originalDrawBlock = (context, px, py, color, size, alpha = 1) => {
+    px = Math.round(px * ratio) / ratio;
+    py = Math.round(py * ratio) / ratio;
     const gradient = context.createLinearGradient(px, py, px + size, py + size);
     gradient.addColorStop(0, lighten(color, 0.35));
     gradient.addColorStop(1, color);
     context.save();
     context.globalAlpha = alpha;
     context.shadowColor = color;
-    context.shadowBlur = 12;
+    context.shadowBlur = 12 * ratio;
     context.fillStyle = gradient;
     context.beginPath();
     context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
@@ -89,7 +157,8 @@ function checkRendering() {
     }
   };
   const channelDifference = compareArtwork(ctx, canvas, draw);
-  check(channelDifference < 1, 'Cached blocks must preserve the original dense-board artwork');
+  check(channelDifference < 1,
+    `Cached blocks must preserve the original dense-board artwork (difference ${channelDifference})`);
 
   drawBlock = originalDrawBlock;
   for (let i = 0; i < 10; i++) measure();
@@ -122,10 +191,11 @@ function checkRendering() {
   };
 }
 
-test('Chromium preserves artwork and renders a dense board below the frame budget', (t) => {
+for (const ratio of [1, 1.25, 2]) test(`Chromium at DPR ${ratio} preserves artwork and accessibility`, (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'block-drop-rendering-'));
   try {
     const html = readFileSync(join(__dirname, 'index.html'), 'utf8');
+    const css = readFileSync(join(__dirname, 'style.css'), 'utf8');
     const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
     const harness = `
       const pendingFrames = new Map();
@@ -140,7 +210,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
       });
     `;
     const page = html
-      .replace(/<link[^>]+style\.css[^>]*>/, '')
+      .replace(/<link[^>]+style\.css[^>]*>/, `<style>${css}</style>`)
       .replace('<script src="game.js"></script>', `
         <pre id="result"></pre>
         <script>${harness}</script>
@@ -158,6 +228,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
     writeFileSync(file, page);
     const browser = spawnSync(process.env.CHROMIUM || 'chromium', [
       '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      `--force-device-scale-factor=${ratio}`,
       `--user-data-dir=${join(directory, 'profile')}`, '--dump-dom', pathToFileURL(file).href,
     ], { encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024 });
     assert.ifError(browser.error);

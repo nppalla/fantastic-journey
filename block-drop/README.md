@@ -50,6 +50,22 @@ active pieces, ghosts, and the next-piece preview reuse those sprites. Padding
 preserves the glow, and ghost opacity is applied when drawing the cached image.
 Only opacity is changed and restored per block, avoiding full canvas-state saves.
 
+The board, preview, and cached sprites use device-pixel-ratio-scaled backing
+stores while keeping their original CSS sizes and logical game coordinates.
+Grid lines align to device pixels. Zooming or changing displays rebuilds the
+backing stores and sprite cache at the new resolution.
+
+## Accessibility
+
+The icon buttons have accessible names that follow their actions, including
+pause/resume and start/restart. Score, lines, and level form a polite, atomic
+live status, including score changes from hard drops. Both canvases have text
+labels, and the preview identifies the next piece.
+
+The start, pause, and game-over overlay is a named, described nonmodal dialog.
+Pause and game over focus its action; starting or resuming from the dialog
+returns focus to the board. The board also references the keyboard controls.
+
 ## Tests
 
 With Node.js 18 or newer installed, run the dependency-free regression tests:
@@ -65,8 +81,10 @@ node --test block-drop/game.test.js block-drop/game.browser.test.js
 ```
 
 The browser executable defaults to `chromium`; set `CHROMIUM` to its path if
-needed. The browser check reports cold and warmed full-board drawing times and
-checks the warmed p95 against the issue's 16 ms target. Timings depend on the
+needed. The browser checks cover device pixel ratios 1, 1.25, and 2, canvas
+dimensions, pixel-aligned grid lines, accessible markup, statistics updates,
+and dialog focus transitions. They report cold and warmed full-board drawing
+times and check the warmed p95 against the issue's 16 ms target. Timings depend on the
 machine and browser, so they are not a guarantee for every device.
 
 ## Files
@@ -76,5 +94,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Restart scheduling, input, sprite reuse, and preview regressions |
-| `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
+| `game.test.js` | Restart scheduling, input, sprites, DPI scaling, and accessibility state regressions |
+| `game.browser.test.js` | Real-canvas appearance, DPI, accessibility, and rendering checks |
