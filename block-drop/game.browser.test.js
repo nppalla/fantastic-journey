@@ -12,6 +12,27 @@ function checkRendering() {
   const check = (condition, message) => {
     if (!condition) throw new Error(message);
   };
+  const ratio = window.devicePixelRatio;
+  const checkDimensions = (scale) => {
+    for (const [target, width, height] of [[canvas, 300, 600], [nextCanvas, 120, 120]]) {
+      check(target.width === Math.round(width * scale) && target.height === Math.round(height * scale),
+        'Canvas backing stores must match the device scale');
+      const bounds = target.getBoundingClientRect();
+      check(bounds.width === width && bounds.height === height, 'CSS canvas dimensions must not grow');
+      const transform = target.getContext('2d').getTransform();
+      check(transform.a === scale && transform.d === scale, 'Canvas transforms must scale logical pixels');
+    }
+  };
+  checkDimensions(ratio);
+  const gridX = Math.round(30 * ratio);
+  const gridY = Math.round(5 * ratio);
+  const gridPixels = ctx.getImageData(gridX - 1, gridY, 3, 1).data;
+  check(gridPixels[3] === 0 && gridPixels[7] > 0 && gridPixels[11] === 0,
+    'Vertical grid lines must occupy exactly one device pixel');
+  const gridRow = ctx.getImageData(Math.round(5 * ratio), gridX - 1, 1, 3).data;
+  check(gridRow[3] === 0 && gridRow[7] > 0 && gridRow[11] === 0,
+    'Horizontal grid lines must occupy exactly one device pixel');
+
   startGame();
   const firstFrame = pendingFrames.keys().next().value;
   for (let i = 0; i < 10; i++) startGame();
@@ -61,13 +82,15 @@ function checkRendering() {
 
   const cachedDrawBlock = drawBlock;
   const originalDrawBlock = (context, px, py, color, size, alpha = 1) => {
+    px = Math.round(px * ratio) / ratio;
+    py = Math.round(py * ratio) / ratio;
     const gradient = context.createLinearGradient(px, py, px + size, py + size);
     gradient.addColorStop(0, lighten(color, 0.35));
     gradient.addColorStop(1, color);
     context.save();
     context.globalAlpha = alpha;
     context.shadowColor = color;
-    context.shadowBlur = 12;
+    context.shadowBlur = 12 * ratio;
     context.fillStyle = gradient;
     context.beginPath();
     context.roundRect(px + 1, py + 1, size - 2, size - 2, 5);
@@ -110,7 +133,35 @@ function checkRendering() {
   check(previewDifferences.every((difference) => difference < 1),
     'Cached blocks must preserve every next-piece preview');
 
+  const snapshot = JSON.stringify(state);
+  const pendingFrame = pendingFrames.keys().next().value;
+  for (const scale of [2, 1.25, 1]) {
+    const oldSprites = new Set(blockSprites.values());
+    const changed = scale !== pixelRatio;
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: scale });
+    window.dispatchEvent(new Event('resize'));
+    checkDimensions(scale);
+    check(JSON.stringify(state) === snapshot, 'Display-scale changes must not reset gameplay');
+    check(pendingFrames.size === 1 && pendingFrames.has(pendingFrame),
+      'Display-scale changes must not start another render loop');
+    check(!changed || [...blockSprites.values()].every((sprite) => !oldSprites.has(sprite)),
+      'Display-scale changes must discard old-resolution artwork');
+    check(nextCtx.getImageData(0, 0, nextCanvas.width, nextCanvas.height).data.some((value) => value > 0),
+      'Display-scale changes must redraw the preview immediately');
+    for (const type of 'IJLOSTZ') {
+      state.nextType = type;
+      drawNext();
+    }
+    state.nextType = JSON.parse(snapshot).nextType;
+    drawNext();
+    const count = blockSprites.size;
+    draw();
+    drawNext();
+    check(blockSprites.size === count && count <= 14, 'The sprite cache must remain bounded at each scale');
+  }
+
   return {
+    devicePixelRatio: ratio,
     coldMs: cold,
     meanMs: timings.reduce((sum, time) => sum + time, 0) / timings.length,
     p95Ms: p95,
@@ -122,11 +173,12 @@ function checkRendering() {
   };
 }
 
-test('Chromium preserves artwork and renders a dense board below the frame budget', (t) => {
+function testRendering(ratio, t) {
   const directory = mkdtempSync(join(tmpdir(), 'block-drop-rendering-'));
   try {
     const html = readFileSync(join(__dirname, 'index.html'), 'utf8');
     const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
+    const styles = readFileSync(join(__dirname, 'style.css'), 'utf8');
     const harness = `
       const pendingFrames = new Map();
       let frameId = -1;
@@ -140,7 +192,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
       });
     `;
     const page = html
-      .replace(/<link[^>]+style\.css[^>]*>/, '')
+      .replace(/<link[^>]+style\.css[^>]*>/, `<style>${styles}</style>`)
       .replace('<script src="game.js"></script>', `
         <pre id="result"></pre>
         <script>${harness}</script>
@@ -158,6 +210,7 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
     writeFileSync(file, page);
     const browser = spawnSync(process.env.CHROMIUM || 'chromium', [
       '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      `--force-device-scale-factor=${ratio}`,
       `--user-data-dir=${join(directory, 'profile')}`, '--dump-dom', pathToFileURL(file).href,
     ], { encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024 });
     assert.ifError(browser.error);
@@ -166,8 +219,14 @@ test('Chromium preserves artwork and renders a dense board below the frame budge
     assert.ok(match, `Chromium did not return rendering results: ${browser.stderr}`);
     const result = JSON.parse(match[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
     assert.equal(result.error, undefined, result.error);
+    assert.equal(result.devicePixelRatio, ratio);
     t.diagnostic(JSON.stringify(result));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
+}
+
+for (const ratio of [1, 1.25, 2]) {
+  test(`Chromium DPR ${ratio}: sharp artwork and dense-board drawing below the frame budget`,
+    (t) => testRendering(ratio, t));
+}

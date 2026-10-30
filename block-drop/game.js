@@ -4,6 +4,9 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 const PREVIEW_BLOCK = 24;
+const BOARD_WIDTH = COLS * BLOCK;
+const BOARD_HEIGHT = ROWS * BLOCK;
+const PREVIEW_SIZE = 120;
 const SPRITE_PADDING = 18;
 
 const COLORS = {
@@ -31,12 +34,12 @@ const LINE_SCORES = [0, 100, 300, 500, 800];
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
-canvas.width = COLS * BLOCK;
-canvas.height = ROWS * BLOCK;
 
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
 const blockSprites = new Map();
+let pixelRatio = 0;
+let spritePadding = SPRITE_PADDING;
 let animationFrame = null;
 
 const scoreEl = document.getElementById('score');
@@ -194,7 +197,7 @@ function spawnParticles(row) {
   const colors = Object.values(COLORS);
   for (let i = 0; i < 40; i++) {
     state.particles.push({
-      x: Math.random() * canvas.width,
+      x: Math.random() * BOARD_WIDTH,
       y: row * BLOCK + BLOCK / 2,
       vx: (Math.random() - 0.5) * 0.4,
       vy: (Math.random() - 0.8) * 0.4,
@@ -222,22 +225,43 @@ function lighten(hex, amount) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
+function sizeCanvas(target, context, width, height) {
+  target.style.width = `${width}px`;
+  target.style.height = `${height}px`;
+  target.width = Math.round(width * pixelRatio);
+  target.height = Math.round(height * pixelRatio);
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+}
+
+function updateCanvasResolution() {
+  const ratio = window.devicePixelRatio || 1;
+  if (pixelRatio === ratio) return;
+  pixelRatio = ratio;
+  spritePadding = Math.ceil(SPRITE_PADDING * pixelRatio) / pixelRatio;
+  sizeCanvas(canvas, ctx, BOARD_WIDTH, BOARD_HEIGHT);
+  sizeCanvas(nextCanvas, nextCtx, PREVIEW_SIZE, PREVIEW_SIZE);
+  blockSprites.clear();
+  if (state.nextType) drawNext();
+}
+
 function createBlockSprite(color, size) {
   const sprite = document.createElement('canvas');
   // Keep the glow outside the block instead of clipping it to the cell.
-  sprite.width = sprite.height = size + SPRITE_PADDING * 2;
+  sprite.width = sprite.height = Math.ceil((size + spritePadding * 2) * pixelRatio);
   const context = sprite.getContext('2d');
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   const gradient = context.createLinearGradient(
-    SPRITE_PADDING, SPRITE_PADDING, SPRITE_PADDING + size, SPRITE_PADDING + size,
+    spritePadding, spritePadding, spritePadding + size, spritePadding + size,
   );
   gradient.addColorStop(0, lighten(color, 0.35));
   gradient.addColorStop(1, color);
 
   context.shadowColor = color;
-  context.shadowBlur = 12;
+  // Shadow blur is measured in backing-store pixels, not transformed coordinates.
+  context.shadowBlur = 12 * pixelRatio;
   context.fillStyle = gradient;
   context.beginPath();
-  context.roundRect(SPRITE_PADDING + 1, SPRITE_PADDING + 1, size - 2, size - 2, 5);
+  context.roundRect(spritePadding + 1, spritePadding + 1, size - 2, size - 2, 5);
   context.fill();
   return sprite;
 }
@@ -252,23 +276,29 @@ function drawBlock(context, px, py, color, size, alpha = 1) {
 
   const previousAlpha = context.globalAlpha;
   context.globalAlpha = alpha;
-  context.drawImage(sprite, px - SPRITE_PADDING, py - SPRITE_PADDING);
+  // Place the cached artwork on device pixels without resampling it.
+  context.drawImage(sprite,
+    Math.round(px * pixelRatio) / pixelRatio - spritePadding,
+    Math.round(py * pixelRatio) / pixelRatio - spritePadding,
+    sprite.width / pixelRatio, sprite.height / pixelRatio);
   context.globalAlpha = previousAlpha;
 }
 
 function drawGrid() {
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1 / pixelRatio;
   for (let x = 1; x < COLS; x++) {
+    const position = (Math.round(x * BLOCK * pixelRatio) + 0.5) / pixelRatio;
     ctx.beginPath();
-    ctx.moveTo(x * BLOCK + 0.5, 0);
-    ctx.lineTo(x * BLOCK + 0.5, canvas.height);
+    ctx.moveTo(position, 0);
+    ctx.lineTo(position, BOARD_HEIGHT);
     ctx.stroke();
   }
   for (let y = 1; y < ROWS; y++) {
+    const position = (Math.round(y * BLOCK * pixelRatio) + 0.5) / pixelRatio;
     ctx.beginPath();
-    ctx.moveTo(0, y * BLOCK + 0.5);
-    ctx.lineTo(canvas.width, y * BLOCK + 0.5);
+    ctx.moveTo(0, position);
+    ctx.lineTo(BOARD_WIDTH, position);
     ctx.stroke();
   }
 }
@@ -295,7 +325,8 @@ function drawParticles() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  updateCanvasResolution();
+  ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
   drawGrid();
 
   state.board.forEach((row, y) => {
@@ -313,7 +344,7 @@ function draw() {
 }
 
 function drawNext() {
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  nextCtx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
   const shape = SHAPES[state.nextType];
 
   // Center the filled cells, not the whole matrix, so I and O sit in the middle.
@@ -321,8 +352,8 @@ function drawNext() {
   const filledCols = shape[0].map((_, x) => (shape.some((row) => row[x]) ? x : -1)).filter((x) => x >= 0);
   const width = filledCols.length * PREVIEW_BLOCK;
   const height = filledRows.length * PREVIEW_BLOCK;
-  const offsetX = (nextCanvas.width - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
-  const offsetY = (nextCanvas.height - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
+  const offsetX = (PREVIEW_SIZE - width) / 2 - filledCols[0] * PREVIEW_BLOCK;
+  const offsetY = (PREVIEW_SIZE - height) / 2 - filledRows[0] * PREVIEW_BLOCK;
 
   shape.forEach((row, y) => {
     row.forEach((filled, x) => {
@@ -445,6 +476,7 @@ startBtn.addEventListener('click', () => {
 pauseBtn.addEventListener('click', togglePause);
 restartBtn.addEventListener('click', startGame);
 document.addEventListener('keydown', handleKey);
+window.addEventListener('resize', draw);
 
 state.board = createBoard();
 draw();
