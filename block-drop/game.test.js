@@ -282,3 +282,102 @@ test('preview sprites keep every next-piece shape centered at its original size'
     assert.deepEqual(calls(preview, 'clearRect').at(-1).args, [0, 0, 120, 120]);
   }
 });
+
+test('particle updates remove expired entries in place and preserve live motion and opacity', () => {
+  const game = loadGame();
+  game.run(`
+    state.particles = [0.01, 1, 0.1, 0.5, 0].map((life) => ({
+      x: 10, y: 20, vx: 0.1, vy: -0.2, life, color: COLORS.I,
+    }));
+    const particleArray = state.particles;
+    const survivors = [state.particles[1], state.particles[3]];
+    updateParticles(70);
+  `);
+  assert.equal(game.run('state.particles === particleArray'), true);
+  assert.equal(game.run('state.particles.length'), 2);
+  assert.equal(game.run('state.particles.every((p, i) => p === survivors[i])'), true);
+  assert.deepEqual(Array.from(game.run('state.particles.map((p) => p.life)')), [0.9, 0.4]);
+  for (const property of ['x', 'y', 'vy']) {
+    const expected = { x: 17, y: 6, vy: -0.144 }[property];
+    assert.ok(Math.abs(game.run(`state.particles[0].${property}`) - expected) < 1e-10);
+  }
+  game.run('drawParticles()');
+  assert.deepEqual(calls(game.elements.get('board'), 'fillRect').map(({ alpha }) => alpha), [0.9, 0.4]);
+  assert.equal(game.elements.get('board').getContext('2d').globalAlpha, 1);
+});
+
+test('particle cleanup handles zero elapsed time, exact expiry, and long frames', () => {
+  const game = loadGame();
+  game.run('spawnParticles(19); updateParticles(0)');
+  assert.equal(game.run('state.particles.length'), 40);
+  assert.equal(game.run('state.particles.every((p) => p.life === 1)'), true);
+  game.run('updateParticles(700)');
+  assert.equal(game.run('state.particles.length'), 0);
+  game.run('updateParticles(700); spawnParticles(19); updateParticles(10000)');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+test('overlapping line-clear effects retain only the newer live particles', () => {
+  const game = loadGame();
+  game.run(`
+    state.board[19].fill('I');
+    clearLines();
+    updateParticles(350);
+    state.board[19].fill('T');
+    clearLines();
+    const newerParticles = state.particles.slice(40);
+  `);
+  assert.equal(game.run('state.particles.length'), 80);
+  assert.equal(game.run('state.lines'), 2);
+  game.run('updateParticles(350)');
+  assert.equal(game.run('state.particles.length'), 40);
+  assert.equal(game.run('state.particles.every((p, i) => p === newerParticles[i] && p.life === 0.5)'), true);
+  game.run('updateParticles(350)');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+test('many line clears do not accumulate expired particles', () => {
+  const game = loadGame();
+  for (let i = 0; i < 100; i++) {
+    game.run("state.board[19].fill('I'); clearLines()");
+    assert.equal(game.run('state.particles.length'), 40);
+    game.run('updateParticles(700)');
+    assert.equal(game.run('state.particles.length'), 0);
+  }
+  assert.equal(game.run('state.lines'), 100);
+});
+
+test('particles expire while paused and after game over without affecting pieces', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run('spawnParticles(19); togglePause()');
+  const y = game.run('state.piece.y');
+  assert.equal(game.frame(700), 1);
+  assert.equal(game.run('state.particles.length'), 0);
+  assert.equal(game.run('state.piece.y'), y);
+  game.run('spawnParticles(19); endGame()');
+  assert.equal(game.frame(1400), 1);
+  assert.equal(game.run('state.particles.length'), 0);
+  assert.equal(game.run('state.piece.y'), y);
+  assert.equal(game.frames.size, 1);
+});
+
+test('starting and restarting remove particles from previous games', () => {
+  const game = loadGame();
+  game.run('spawnParticles(19)');
+  game.elements.get('start-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 0);
+  const pendingFrame = game.frames.keys().next().value;
+  for (let i = 0; i < 10; i++) {
+    game.run('spawnParticles(19)');
+    game.elements.get('restart-btn').dispatch('click');
+    assert.equal(game.run('state.particles.length'), 0);
+    assert.equal(game.frames.size, 1);
+    assert.equal(game.frames.keys().next().value, pendingFrame);
+  }
+  game.run('spawnParticles(19); endGame()');
+  game.elements.get('start-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 0);
+  game.run('draw()');
+  assert.equal(calls(game.elements.get('board'), 'fillRect').length, 0);
+});

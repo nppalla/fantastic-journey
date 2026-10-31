@@ -205,12 +205,15 @@ function spawnParticles(row) {
 }
 
 function updateParticles(delta) {
+  let liveCount = 0;
   for (const p of state.particles) {
     p.x += p.vx * delta;
     p.y += p.vy * delta;
     p.vy += 0.0008 * delta;
     p.life -= delta / 700;
+    if (p.life > 0) state.particles[liveCount++] = p;
   }
+  state.particles.length = liveCount;
 }
 
 function lighten(hex, amount) {
@@ -418,6 +421,7 @@ function update(time = 0) {
 
 function startGame() {
   state.board = createBoard();
+  state.particles.length = 0;
   state.score = 0;
   state.lines = 0;
   state.level = 1;
