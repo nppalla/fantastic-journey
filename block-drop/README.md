@@ -50,6 +50,11 @@ active pieces, ghosts, and the next-piece preview reuse those sprites. Padding
 preserves the glow, and ghost opacity is applied when drawing the cached image.
 Only opacity is changed and restored per block, avoiding full canvas-state saves.
 
+Line-clear particles fade over 700 ms. Each update removes expired particles
+in place, so the array holds only live effects without allocating a replacement
+array per frame. Effects continue animating during pause and game over; starting
+or restarting a game clears them immediately.
+
 ## Tests
 
 With Node.js 18 or newer installed, run the dependency-free regression tests:
@@ -76,5 +81,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Restart scheduling, input, sprite reuse, and preview regressions |
+| `game.test.js` | Restart scheduling, particle lifecycle, input, sprite reuse, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
