@@ -199,6 +199,109 @@ test('restarting registers keyboard input only once', () => {
   assert.equal(prevented, 1);
 });
 
+test('particle updates remove consecutive expired entries in place and preserve survivors', () => {
+  const game = loadGame();
+  game.run(`
+    const particleArray = state.particles;
+    state.particles.push(...[0.25, 0.5, 0.75, 0.1, 1, 0.5].map((life, x) => ({
+      x, y: 2, vx: 0.2, vy: -0.1, life, color: COLORS.I,
+    })));
+    const survivors = [state.particles[2], state.particles[4]];
+    updateParticles(350);
+  `);
+  assert.equal(game.run('state.particles === particleArray'), true);
+  assert.equal(game.run('state.particles.length'), 2);
+  assert.equal(game.run('state.particles.every((p, i) => p === survivors[i])'), true);
+  assert.deepEqual(Array.from(game.run('state.particles.map((p) => p.life)')), [0.25, 0.5]);
+  assert.deepEqual(Array.from(game.run('state.particles.map((p) => p.x)')), [72, 74]);
+  assert.equal(game.run('state.particles.every((p) => p.y === -33)'), true);
+  assert.equal(game.run('state.particles.every((p) => Math.abs(p.vy - 0.18) < 1e-12)'), true);
+});
+
+test('line-clear particles fade for 700 milliseconds and leave nothing to draw afterward', () => {
+  const game = loadGame();
+  const board = game.elements.get('board');
+  game.run('spawnParticles(19); updateParticles(350); drawParticles()');
+  assert.equal(game.run('state.particles.length'), 40);
+  assert.equal(game.run('state.particles.every((p) => p.life === 0.5)'), true);
+  assert.equal(calls(board, 'fillRect').length, 40);
+  assert.equal(calls(board, 'fillRect').every(({ alpha }) => alpha === 0.5), true);
+  assert.equal(board.getContext('2d').globalAlpha, 1);
+
+  board.getContext('2d').calls.length = 0;
+  game.run('updateParticles(350); drawParticles(); updateParticles(0)');
+  assert.equal(game.run('state.particles.length'), 0);
+  assert.equal(calls(board, 'fillRect').length, 0);
+  assert.equal(board.getContext('2d').globalAlpha, 1);
+
+  game.run('spawnParticles(0); updateParticles(10000)');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+test('a thousand line clears retain only live particles instead of accumulated history', () => {
+  const game = loadGame();
+  for (let i = 0; i < 1000; i++) {
+    game.run('state.board[ROWS - 1].fill("I"); clearLines()');
+    assert.equal(game.run('state.particles.length'), i === 0 ? 40 : 80);
+    game.run('updateParticles(350)');
+    assert.equal(game.run('state.particles.length'), 40);
+    assert.equal(game.run('state.particles.every((p) => p.life > 0)'), true);
+  }
+  assert.equal(game.run('state.lines'), 1000);
+  game.run('updateParticles(350)');
+  assert.equal(game.run('state.particles.length'), 0);
+});
+
+test('starting and restarting discard old particles without replacing their array or render loop', () => {
+  const game = loadGame();
+  game.run('const particleArray = state.particles; spawnParticles(19)');
+  game.elements.get('start-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 0);
+  assert.equal(game.run('state.particles === particleArray'), true);
+  const pendingFrame = game.frames.keys().next().value;
+
+  for (const paused of [false, true]) {
+    game.run(`spawnParticles(19); state.paused = ${paused}`);
+    game.elements.get('restart-btn').dispatch('click');
+    assert.equal(game.run('state.particles.length'), 0);
+    assert.equal(game.run('state.particles === particleArray'), true);
+    assert.equal(game.run('state.paused'), false);
+    assert.equal(game.frames.size, 1);
+    assert.equal(game.frames.keys().next().value, pendingFrame);
+  }
+
+  game.run('spawnParticles(19); endGame()');
+  game.elements.get('start-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 0);
+  assert.equal(game.run('state.particles === particleArray'), true);
+  assert.equal(game.frames.size, 1);
+  assert.equal(game.frames.keys().next().value, pendingFrame);
+});
+
+test('particles keep animating during pause and game over without clearing on resume', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run('spawnParticles(19)');
+  game.elements.get('pause-btn').dispatch('click');
+  const y = game.run('state.piece.y');
+  game.frame(350);
+  assert.equal(game.run('state.particles.length'), 40);
+  assert.equal(game.run('state.particles.every((p) => p.life === 0.5)'), true);
+  assert.equal(game.run('state.piece.y'), y);
+
+  game.elements.get('start-btn').dispatch('click');
+  assert.equal(game.run('state.particles.length'), 40);
+  game.elements.get('pause-btn').dispatch('click');
+  game.frame(700);
+  assert.equal(game.run('state.particles.length'), 0);
+
+  game.elements.get('start-btn').dispatch('click');
+  game.run('spawnParticles(19); endGame()');
+  game.frame(1400);
+  assert.equal(game.run('state.particles.length'), 0);
+  assert.equal(game.frames.size, 1);
+});
+
 test('dense-board drawing reuses gradient and glow sprites for both block sizes', () => {
   const game = loadGame();
   game.run(`
