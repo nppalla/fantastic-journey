@@ -24,7 +24,8 @@ npx serve .
 
 - Fill a full row to clear it.
 - Every 10 cleared lines raises the level by one.
-- Each level makes pieces fall faster.
+- Pieces start falling every 1,000 ms. Each level reduces the interval by 100 ms,
+  down to a minimum of 100 ms at level 10 and above.
 - The game ends when a new piece cannot enter the board.
 
 ## Scoring
@@ -76,5 +77,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Restart scheduling, input, sprite reuse, and preview regressions |
+| `game.test.js` | Drop timing, level progression, restart scheduling, input, sprite reuse, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |

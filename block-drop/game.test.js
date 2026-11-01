@@ -124,6 +124,73 @@ function calls(canvas, name) {
   return canvas.getContext('2d').calls.filter((call) => call.name === name);
 }
 
+test('drop intervals preserve early-level speeds and stay at least 100 ms at later levels', () => {
+  const game = loadGame();
+  const earlyIntervals = [1000, 900, 800, 700, 600, 500, 400, 300, 200, 100];
+  for (const [index, interval] of earlyIntervals.entries()) {
+    assert.equal(game.run(`state.level = ${index + 1}; dropInterval()`), interval);
+  }
+  for (const level of [11, 12, 20, 100, 1000]) {
+    assert.equal(game.run(`state.level = ${level}; dropInterval()`), 100, `level ${level}`);
+  }
+});
+
+test('high-level gravity waits for the drop interval instead of dropping every frame', () => {
+  for (const level of [10, 11, 12, 1000]) {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run(`state.level = ${level}; state.piece = createPiece('O')`);
+
+    for (const time of [16, 32, 48, 64, 80, 96, 100]) {
+      assert.equal(game.frame(time), 1);
+      assert.equal(game.run('state.piece.y'), 0, `level ${level} at ${time} ms`);
+      assert.equal(game.run('state.dropCounter'), time);
+    }
+    game.frame(101);
+    assert.equal(game.run('state.piece.y'), 1);
+    assert.equal(game.run('state.dropCounter'), 0);
+
+    for (const time of [117, 201]) {
+      game.frame(time);
+      assert.equal(game.run('state.piece.y'), 1);
+    }
+    game.frame(202);
+    assert.equal(game.run('state.piece.y'), 2);
+    assert.equal(game.run('state.dropCounter'), 0);
+  }
+});
+
+test('clearing into level 11 keeps gravity capped and restarting restores level-one timing', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run(`
+    state.piece = createPiece('O');
+    state.lines = 99;
+    state.level = 10;
+    state.board[ROWS - 1].fill('I');
+    clearLines();
+  `);
+  assert.equal(game.run('state.lines'), 100);
+  assert.equal(game.run('state.level'), 11);
+  assert.equal(game.elements.get('level').textContent, 11);
+  assert.equal(game.run('dropInterval()'), 100);
+  game.frame(16);
+  assert.equal(game.run('state.piece.y'), 0);
+  game.frame(101);
+  assert.equal(game.run('state.piece.y'), 1);
+
+  game.elements.get('restart-btn').dispatch('click');
+  game.run("state.piece = createPiece('O')");
+  assert.equal(game.run('state.level'), 1);
+  assert.equal(game.run('dropInterval()'), 1000);
+  for (const time of [201, 1101]) {
+    game.frame(time);
+    assert.equal(game.run('state.piece.y'), 0);
+  }
+  game.frame(1102);
+  assert.equal(game.run('state.piece.y'), 1);
+});
+
 test('ten restarts retain one update and draw per frame with a fresh drop timer', () => {
   const game = loadGame();
   const board = game.elements.get('board');

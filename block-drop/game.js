@@ -187,7 +187,7 @@ function spawn() {
 }
 
 function dropInterval() {
-  return 1000 - (state.level - 1) * 100;
+  return Math.max(100, 1000 - (state.level - 1) * 100);
 }
 
 function spawnParticles(row) {
