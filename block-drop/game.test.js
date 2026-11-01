@@ -124,6 +124,109 @@ function calls(canvas, name) {
   return canvas.getContext('2d').calls.filter((call) => call.name === name);
 }
 
+for (const { name, type, shape, x, y, obstacle = '' } of [
+  { name: 'left wall', type: 'I', shape: 'rotateMatrix(SHAPES.I)', x: -2, y: 5 },
+  { name: 'right wall', type: 'I', shape: 'rotateMatrix(SHAPES.I)', x: 7, y: 5 },
+  { name: 'floor', type: 'I', shape: 'SHAPES.I', x: 3, y: 18 },
+  { name: 'locked blocks', type: 'T', shape: 'SHAPES.T', x: 3, y: 5, obstacle: "state.board[7][4] = 'J';" },
+]) {
+  test(`rotation into the ${name} preserves the piece and board`, () => {
+    const game = loadGame();
+    game.run(`
+      state.piece = { type: '${type}', shape: ${shape}, x: ${x}, y: ${y} };
+      ${obstacle}
+      const originalShape = state.piece.shape;
+    `);
+    assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+    assert.equal(game.run('collides(rotateMatrix(state.piece.shape), state.piece.x, state.piece.y)'), true);
+    const before = game.run('JSON.stringify({ piece: state.piece, board: state.board })');
+
+    game.run('rotate()');
+
+    assert.equal(game.run('state.piece.shape === originalShape'), true);
+    assert.equal(game.run('JSON.stringify({ piece: state.piece, board: state.board })'), before);
+    assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+  });
+}
+
+for (const type of 'IJLOSTZ') {
+  test(`${type} rotates clockwise through four legal orientations without moving`, () => {
+    const game = loadGame();
+    game.run(`state.piece = createPiece('${type}'); state.piece.y = 5;`);
+    const original = game.run('JSON.stringify(state.piece)');
+    for (let i = 0; i < 4; i++) {
+      const expected = game.run('JSON.stringify(rotateMatrix(state.piece.shape))');
+      const position = game.run('JSON.stringify([state.piece.x, state.piece.y])');
+
+      game.run('rotate()');
+
+      assert.equal(game.run('JSON.stringify(state.piece.shape)'), expected);
+      assert.equal(game.run('JSON.stringify([state.piece.x, state.piece.y])'), position);
+      assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+    }
+    assert.equal(game.run('JSON.stringify(state.piece)'), original);
+  });
+}
+
+test('a spawning I piece can rotate with filled cells above the board', () => {
+  const game = loadGame();
+  game.run("state.piece = createPiece('I')");
+  const expected = game.run('JSON.stringify(rotateMatrix(state.piece.shape))');
+
+  game.run('rotate()');
+
+  assert.equal(game.run('JSON.stringify(state.piece.shape)'), expected);
+  assert.equal(game.run('state.piece.y'), -1);
+  assert.equal(game.run('state.piece.shape[0].some(Boolean)'), true);
+  assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+});
+
+test('empty matrix cells do not prevent rotation beside walls and locked blocks', () => {
+  const game = loadGame();
+  game.run(`
+    state.piece = createPiece('I');
+    state.piece.y = 5;
+    state.board[5][0] = 'J';
+  `);
+  for (const x of [0, 6]) {
+    game.run(`state.piece.shape = SHAPES.I; state.piece.x = ${x};`);
+    const expected = game.run('JSON.stringify(rotateMatrix(state.piece.shape))');
+
+    game.run('rotate()');
+
+    assert.equal(game.run('JSON.stringify(state.piece.shape)'), expected);
+    assert.equal(game.run('state.piece.x'), x);
+    assert.equal(game.run('state.board[5][0]'), 'J');
+    assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+  }
+});
+
+test('blocked keyboard rotation followed by hard drop locks inside the board', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run(`
+    state.piece = createPiece('I');
+    state.piece.shape = rotateMatrix(state.piece.shape);
+    state.piece.x = 7;
+    state.piece.y = 5;
+  `);
+  const original = game.run('JSON.stringify(state.piece)');
+  let prevented = 0;
+  for (const code of ['ArrowUp', 'Space']) {
+    game.document.dispatch('keydown', {
+      code,
+      preventDefault() { prevented++; },
+    });
+    if (code === 'ArrowUp') assert.equal(game.run('JSON.stringify(state.piece)'), original);
+  }
+
+  assert.equal(prevented, 2);
+  assert.equal(game.run('state.over'), false);
+  assert.equal(game.run('state.board.every((row) => row.length === COLS)'), true);
+  assert.equal(game.run('state.board.flat().filter(Boolean).length'), 4);
+  assert.equal(game.run("state.board.slice(16).every((row) => row[9] === 'I')"), true);
+});
+
 test('ten restarts retain one update and draw per frame with a fresh drop timer', () => {
   const game = loadGame();
   const board = game.elements.get('board');
