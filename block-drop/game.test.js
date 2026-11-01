@@ -124,6 +124,121 @@ function calls(canvas, name) {
   return canvas.getContext('2d').calls.filter((call) => call.name === name);
 }
 
+const lineClearCases = [
+  { name: 'no full rows', rows: [] },
+  { name: 'one bottom row', rows: [19] },
+  { name: 'two adjacent bottom rows', rows: [18, 19] },
+  { name: 'three adjacent bottom rows', rows: [17, 18, 19] },
+  { name: 'four adjacent bottom rows', rows: [16, 17, 18, 19] },
+  { name: 'two adjacent top rows', rows: [0, 1] },
+  { name: 'three adjacent middle rows', rows: [8, 9, 10] },
+  { name: 'four adjacent top rows', rows: [0, 1, 2, 3] },
+  { name: 'separated rows', rows: [2, 8, 14, 19] },
+  { name: 'two separated adjacent pairs', rows: [3, 4, 18, 19] },
+];
+
+for (const { name, rows } of lineClearCases) {
+  for (const level of [1, 3]) {
+    test(`clearing ${name} at level ${level} preserves the board and awards all lines`, () => {
+      const game = loadGame();
+      const initialLines = (level - 1) * 10;
+      const board = Array.from({ length: 20 }, (_, y) => (
+        Array.from({ length: 10 }, (_, x) => (
+          rows.includes(y) || x === y % 10 ? 'IJLOSTZ'[y % 7] : null
+        ))
+      ));
+      const expectedBoard = [
+        ...Array.from({ length: rows.length }, () => Array(10).fill(null)),
+        ...board.filter((_, y) => !rows.includes(y)),
+      ];
+      game.run(`
+        state.board = ${JSON.stringify(board)};
+        state.score = 37;
+        state.lines = ${initialLines};
+        state.level = ${level};
+        updateStats();
+        clearLines();
+      `);
+
+      const score = 37 + [0, 100, 300, 500, 800][rows.length] * level;
+      assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expectedBoard);
+      assert.equal(game.run('state.board.length'), 20);
+      assert.equal(game.run('state.board.every((row) => row.length === COLS)'), true);
+      assert.equal(game.run('new Set(state.board).size'), 20);
+      assert.equal(game.run('state.board.some((row) => row.every(Boolean))'), false);
+      assert.equal(game.run('state.lines'), initialLines + rows.length);
+      assert.equal(game.run('state.score'), score);
+      assert.equal(game.run('state.level'), level);
+      assert.equal(game.run('state.particles.length'), rows.length * 40);
+      assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+      assert.equal(game.elements.get('lines').textContent, initialLines + rows.length);
+      assert.equal(game.elements.get('level').textContent, level);
+
+      game.run('clearLines()');
+      assert.equal(game.run('state.score'), score);
+      assert.equal(game.run('state.lines'), initialLines + rows.length);
+      assert.equal(game.run('state.particles.length'), rows.length * 40);
+    });
+  }
+}
+
+for (const cleared of [1, 2, 3, 4]) {
+  test(`a ${cleared}-line clear crossing a level boundary scores at the previous level`, () => {
+    const game = loadGame();
+    game.run(`
+      state.board = createBoard();
+      for (let y = ROWS - ${cleared}; y < ROWS; y++) state.board[y].fill('J');
+      state.score = 37;
+      state.lines = 29;
+      state.level = 3;
+      clearLines();
+    `);
+    const score = 37 + [0, 100, 300, 500, 800][cleared] * 3;
+    assert.equal(game.run('state.lines'), 29 + cleared);
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.run('state.level'), 4);
+    assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+    assert.equal(game.elements.get('lines').textContent, 29 + cleared);
+    assert.equal(game.elements.get('level').textContent, 4);
+  });
+}
+
+for (const cleared of [2, 3, 4]) {
+  test(`hard-dropping a vertical I clears ${cleared} adjacent rows before spawning the next piece`, () => {
+    const game = loadGame();
+    game.run(`
+      state.board = createBoard();
+      for (let y = ROWS - ${cleared}; y < ROWS; y++) {
+        state.board[y].fill('J');
+        state.board[y][4] = null;
+      }
+      state.piece = createPiece('I');
+      state.piece.shape = rotateMatrix(state.piece.shape);
+      state.piece.x = 4 - state.piece.shape[0].findIndex(Boolean);
+      state.piece.y = ROWS - 4 - 3;
+      state.nextType = 'O';
+      state.score = 37;
+      state.lines = 0;
+      state.level = 1;
+      state.dropCounter = 500;
+      hardDrop();
+    `);
+    const score = 37 + 3 * 2 + [0, 100, 300, 500, 800][cleared];
+    const expectedBoard = Array.from({ length: 20 }, () => Array(10).fill(null));
+    for (let y = 16 + cleared; y < 20; y++) expectedBoard[y][4] = 'I';
+    assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expectedBoard);
+    assert.equal(game.run('state.lines'), cleared);
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.run('state.level'), 1);
+    assert.equal(game.run('state.piece.type'), 'O');
+    assert.equal(game.run('state.piece.y'), 0);
+    assert.equal(game.run('state.over'), false);
+    assert.equal(game.run('state.dropCounter'), 0);
+    assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+    assert.equal(game.elements.get('lines').textContent, cleared);
+  });
+}
+
 test('ten restarts retain one update and draw per frame with a fresh drop timer', () => {
   const game = loadGame();
   const board = game.elements.get('board');
