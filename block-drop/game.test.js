@@ -130,7 +130,7 @@ test('drop intervals preserve early-level speeds and stay at least 100 ms at lat
   for (const [index, interval] of earlyIntervals.entries()) {
     assert.equal(game.run(`state.level = ${index + 1}; dropInterval()`), interval);
   }
-  for (const level of [11, 12, 20, 100, 1000]) {
+  for (const level of [11, 12, 20, 100, 1000, Number.MAX_SAFE_INTEGER]) {
     assert.equal(game.run(`state.level = ${level}; dropInterval()`), 100, `level ${level}`);
   }
 });
@@ -156,6 +156,86 @@ test('high-level gravity waits for the drop interval instead of dropping every f
     }
     game.frame(202);
     assert.equal(game.run('state.piece.y'), 2);
+    assert.equal(game.run('state.dropCounter'), 0);
+  }
+});
+
+test('gravity uses elapsed time across frame rates and drops at most once per slow frame', () => {
+  for (const level of [1, 9, 10, 11, 12, 1000, Number.MAX_SAFE_INTEGER]) {
+    for (const frameDuration of [8, 16, 33]) {
+      const game = loadGame();
+      game.elements.get('start-btn').dispatch('click');
+      game.run(`state.level = ${level}; state.piece = createPiece('O')`);
+      const interval = level <= 10 ? 1000 - (level - 1) * 100 : 100;
+      let elapsed = 0;
+      let rows = 0;
+      let time = 0;
+      while (rows < 3) {
+        time += frameDuration;
+        elapsed += frameDuration;
+        if (elapsed > interval) {
+          rows++;
+          elapsed = 0;
+        }
+        assert.equal(game.frame(time), 1);
+        assert.equal(game.run('state.piece.y'), rows,
+          `level ${level}, ${frameDuration} ms frames, time ${time} ms`);
+        assert.equal(game.run('state.dropCounter'), elapsed);
+      }
+
+      game.frame(time + 10000);
+      assert.equal(game.run('state.piece.y'), rows + 1);
+      assert.equal(game.run('state.dropCounter'), 0);
+    }
+  }
+});
+
+test('manual soft and hard drops remain immediate and reset high-level gravity', () => {
+  for (const code of ['ArrowDown', 'Space']) {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run("state.level = 11; state.piece = createPiece('O'); state.nextType = 'O'");
+    game.frame(96);
+    assert.equal(game.run('state.piece.y'), 0);
+    let prevented = 0;
+    game.document.dispatch('keydown', {
+      code,
+      preventDefault() { prevented++; },
+    });
+    const y = code === 'ArrowDown' ? 1 : 0;
+    assert.equal(game.run('state.piece.y'), y);
+    assert.equal(game.run('state.dropCounter'), 0);
+    assert.equal(prevented, 1);
+    if (code === 'Space') {
+      assert.equal(game.run('state.score'), 36);
+      assert.equal(game.run('state.board.slice(-2).flat().filter(Boolean).length'), 4);
+    }
+    game.frame(196);
+    assert.equal(game.run('state.piece.y'), y);
+    game.frame(197);
+    assert.equal(game.run('state.piece.y'), y + 1);
+    assert.equal(game.run('state.dropCounter'), 0);
+  }
+});
+
+test('pausing at high levels freezes gravity and resuming preserves its elapsed timer', () => {
+  for (const level of [11, 12, 1000]) {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run(`state.level = ${level}; state.piece = createPiece('O')`);
+    game.frame(80);
+    assert.equal(game.run('state.piece.y'), 0);
+    game.elements.get('pause-btn').dispatch('click');
+    for (const time of [96, 1000, 60000]) {
+      game.frame(time);
+      assert.equal(game.run('state.piece.y'), 0);
+      assert.equal(game.run('state.dropCounter'), 80);
+    }
+    game.elements.get('pause-btn').dispatch('click');
+    game.frame(60020);
+    assert.equal(game.run('state.piece.y'), 0);
+    game.frame(60021);
+    assert.equal(game.run('state.piece.y'), 1);
     assert.equal(game.run('state.dropCounter'), 0);
   }
 });

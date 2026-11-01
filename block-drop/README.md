@@ -59,6 +59,9 @@ With Node.js 18 or newer installed, run the dependency-free regression tests:
 node --test block-drop/game.test.js
 ```
 
+Gravity checks cover early and high levels, different frame rates, manual drops,
+pause/resume, progression into level 11, and restarting.
+
 For real-canvas rendering checks and dense-board timing, install Chromium and run:
 
 ```bash
