@@ -166,47 +166,57 @@ for (const rows of [[], [19], [18, 19], [17, 18, 19], [16, 17, 18, 19], [0, 1], 
   }
 }
 
-test('a vertical piece completing two adjacent bottom rows clears both on the same drop', () => {
-  const game = loadGame();
-  game.run(`
-    startGame();
-    for (const y of [ROWS - 2, ROWS - 1]) {
-      state.board[y].fill('T');
-      state.board[y][5] = null;
-    }
-    state.piece = createPiece('I');
-    state.piece.shape = rotateMatrix(state.piece.shape);
-    hardDrop();
-  `);
+for (const cleared of [2, 3, 4]) {
+  test(`a vertical piece completing ${cleared} adjacent bottom rows clears them on the same drop`, () => {
+    const game = loadGame();
+    game.run(`
+      startGame();
+      for (let y = ROWS - ${cleared}; y < ROWS; y++) {
+        state.board[y].fill('T');
+        state.board[y][5] = null;
+      }
+      state.piece = createPiece('I');
+      state.piece.shape = rotateMatrix(state.piece.shape);
+      state.nextType = 'O';
+      state.dropCounter = 500;
+      hardDrop();
+    `);
 
-  assert.equal(game.run('state.lines'), 2);
-  assert.equal(game.run('state.score'), 300 + 17 * 2);
-  assert.equal(game.elements.get('score').textContent, '334');
-  assert.equal(game.elements.get('lines').textContent, 2);
-  assert.equal(game.run('state.over'), false);
-  assert.equal(game.run('state.board.slice(0, 18).every((row) => row.every((cell) => cell === null))'), true);
-  assert.deepEqual(
-    JSON.parse(game.run('JSON.stringify(state.board.slice(18))')),
-    Array.from({ length: 2 }, () => Array.from({ length: 10 }, (_, x) => x === 5 ? 'I' : null)),
-  );
-});
+    const score = [0, 100, 300, 500, 800][cleared] + 17 * 2;
+    const expected = Array.from({ length: 20 }, (_, y) => (
+      Array.from({ length: 10 }, (_, x) => y >= 16 + cleared && x === 5 ? 'I' : null)
+    ));
+    assert.equal(game.run('state.lines'), cleared);
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+    assert.equal(game.elements.get('lines').textContent, cleared);
+    assert.equal(game.run('state.over'), false);
+    assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expected);
+    assert.equal(game.run('state.piece.type'), 'O');
+    assert.equal(game.run('state.piece.y'), 0);
+    assert.equal(game.run('state.dropCounter'), 0);
+  });
+}
 
-test('a multi-line clear crossing a level boundary uses the pre-clear level for scoring', () => {
-  const game = loadGame();
-  game.run(`
-    state.lines = 9;
-    state.board[18].fill('T');
-    state.board[19].fill('T');
-    clearLines();
-  `);
+for (const cleared of [1, 2, 3, 4]) {
+  test(`a ${cleared}-line clear crossing a level boundary uses the pre-clear level for scoring`, () => {
+    const game = loadGame();
+    game.run(`
+      state.lines = 29;
+      state.level = 3;
+      for (let y = ROWS - ${cleared}; y < ROWS; y++) state.board[y].fill('T');
+      clearLines();
+    `);
 
-  assert.equal(game.run('state.lines'), 11);
-  assert.equal(game.run('state.score'), 300);
-  assert.equal(game.run('state.level'), 2);
-  assert.equal(game.elements.get('score').textContent, '300');
-  assert.equal(game.elements.get('lines').textContent, 11);
-  assert.equal(game.elements.get('level').textContent, 2);
-});
+    const score = [0, 100, 300, 500, 800][cleared] * 3;
+    assert.equal(game.run('state.lines'), 29 + cleared);
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.run('state.level'), 4);
+    assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+    assert.equal(game.elements.get('lines').textContent, 29 + cleared);
+    assert.equal(game.elements.get('level').textContent, 4);
+  });
+}
 
 test('ten restarts retain one update and draw per frame with a fresh drop timer', () => {
   const game = loadGame();
@@ -281,6 +291,83 @@ test('restarting registers keyboard input only once', () => {
   });
   assert.equal(game.run('state.piece.x'), x - 1);
   assert.equal(prevented, 1);
+});
+
+for (const { name, setup } of [
+  {
+    name: 'left wall',
+    setup: "state.piece = { type: 'I', shape: rotateMatrix(SHAPES.I), x: -2, y: 4 }",
+  },
+  {
+    name: 'right wall',
+    setup: "state.piece = { type: 'I', shape: rotateMatrix(SHAPES.I), x: COLS - 3, y: 4 }",
+  },
+  {
+    name: 'floor',
+    setup: "state.piece = { ...createPiece('I'), y: ROWS - 2 }",
+  },
+  {
+    name: 'locked block',
+    setup: "state.piece = { ...createPiece('T'), y: 4 }; state.board[6][4] = 'J'",
+  },
+]) {
+  test(`rotation into the ${name} is rejected and the piece still locks safely`, () => {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run(setup);
+    game.run('const originalPiece = state.piece; const originalShape = state.piece.shape');
+    assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+    assert.equal(game.run('collides(rotateMatrix(state.piece.shape), state.piece.x, state.piece.y)'), true);
+    const before = game.run('JSON.stringify({ piece: state.piece, board: state.board })');
+    const lockedBlocks = game.run('state.board.flat().filter(Boolean).length');
+    let prevented = 0;
+    game.document.dispatch('keydown', {
+      code: 'ArrowUp',
+      preventDefault() { prevented++; },
+    });
+    assert.equal(prevented, 1);
+    assert.equal(game.run('state.piece === originalPiece && state.piece.shape === originalShape'), true);
+    assert.equal(game.run('JSON.stringify({ piece: state.piece, board: state.board })'), before);
+
+    game.run('hardDrop()');
+    assert.equal(game.run('state.over'), false);
+    assert.equal(game.run('state.board.length === ROWS && state.board.every((row) => row.length === COLS)'), true);
+    assert.equal(game.run('state.board.every((row) => Object.keys(row).length === COLS)'), true);
+    assert.equal(game.run('state.board.flat().filter(Boolean).length'), lockedBlocks + 4);
+  });
+}
+
+test('all piece types rotate clockwise in open space without moving or changing the board', () => {
+  const game = loadGame();
+  for (const type of 'IJLOSTZ') {
+    game.run(`state.piece = { ...createPiece('${type}'), y: 4 }`);
+    const board = game.run('JSON.stringify(state.board)');
+    const position = game.run('JSON.stringify([state.piece.x, state.piece.y])');
+    const original = JSON.parse(game.run('JSON.stringify(state.piece.shape)'));
+    let expected = original;
+    for (let turn = 0; turn < 4; turn++) {
+      expected = expected.map((row, y) => row.map((_, x) => expected[expected.length - 1 - x][y]));
+      game.run('rotate()');
+      assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.piece.shape)')), expected);
+      assert.equal(game.run('JSON.stringify([state.piece.x, state.piece.y])'), position);
+      assert.equal(game.run('JSON.stringify(state.board)'), board);
+      assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+    }
+    assert.deepEqual(expected, original);
+  }
+});
+
+test('an I piece can rotate at spawn with occupied cells above the board', () => {
+  const game = loadGame();
+  game.run("state.piece = createPiece('I'); rotate()");
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.piece.shape)')), [
+    [0, 0, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 0],
+  ]);
+  assert.equal(game.run('state.piece.y'), -1);
+  assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
 });
 
 test('dense-board drawing reuses gradient and glow sprites for both block sizes', () => {

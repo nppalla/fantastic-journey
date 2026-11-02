@@ -23,6 +23,8 @@ npx serve .
 ## Rules
 
 - Fill a full row to clear it. All rows completed by a piece clear together.
+- Rotations that would hit a wall, the floor, or locked blocks are rejected,
+  leaving the piece's shape and position unchanged.
 - Every 10 cleared lines raises the level by one.
 - Each level makes pieces fall faster.
 - The game ends when a new piece cannot enter the board.
@@ -36,6 +38,7 @@ npx serve .
 | 3 | 500 x level |
 | 4 | 800 x level |
 
+Line-clear points use the level before the clear, even if it raises the level.
 A hard drop gives 2 points for each row the piece falls.
 
 ## Rendering
@@ -76,5 +79,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Line clearing and scoring, restart scheduling, input, sprite reuse, and preview regressions |
+| `game.test.js` | Line clearing and scoring, rotation collisions, restart scheduling, input, sprite reuse, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
