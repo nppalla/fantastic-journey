@@ -199,6 +199,83 @@ test('restarting registers keyboard input only once', () => {
   assert.equal(prevented, 1);
 });
 
+for (const { name, setup } of [
+  {
+    name: 'left wall',
+    setup: "state.piece = { type: 'I', shape: rotateMatrix(SHAPES.I), x: -2, y: 4 }",
+  },
+  {
+    name: 'right wall',
+    setup: "state.piece = { type: 'I', shape: rotateMatrix(SHAPES.I), x: COLS - 3, y: 4 }",
+  },
+  {
+    name: 'floor',
+    setup: "state.piece = { ...createPiece('I'), y: ROWS - 2 }",
+  },
+  {
+    name: 'locked block',
+    setup: "state.piece = { ...createPiece('T'), y: 4 }; state.board[6][4] = 'J'",
+  },
+]) {
+  test(`rotation into the ${name} is rejected and the piece still locks safely`, () => {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run(setup);
+    game.run('const originalPiece = state.piece; const originalShape = state.piece.shape');
+    assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+    assert.equal(game.run('collides(rotateMatrix(state.piece.shape), state.piece.x, state.piece.y)'), true);
+    const before = game.run('JSON.stringify({ piece: state.piece, board: state.board })');
+    const lockedBlocks = game.run('state.board.flat().filter(Boolean).length');
+    let prevented = 0;
+    game.document.dispatch('keydown', {
+      code: 'ArrowUp',
+      preventDefault() { prevented++; },
+    });
+    assert.equal(prevented, 1);
+    assert.equal(game.run('state.piece === originalPiece && state.piece.shape === originalShape'), true);
+    assert.equal(game.run('JSON.stringify({ piece: state.piece, board: state.board })'), before);
+
+    game.run('hardDrop()');
+    assert.equal(game.run('state.over'), false);
+    assert.equal(game.run('state.board.length === ROWS && state.board.every((row) => row.length === COLS)'), true);
+    assert.equal(game.run('state.board.every((row) => Object.keys(row).length === COLS)'), true);
+    assert.equal(game.run('state.board.flat().filter(Boolean).length'), lockedBlocks + 4);
+  });
+}
+
+test('all piece types rotate clockwise in open space without moving or changing the board', () => {
+  const game = loadGame();
+  for (const type of 'IJLOSTZ') {
+    game.run(`state.piece = { ...createPiece('${type}'), y: 4 }`);
+    const board = game.run('JSON.stringify(state.board)');
+    const position = game.run('JSON.stringify([state.piece.x, state.piece.y])');
+    const original = JSON.parse(game.run('JSON.stringify(state.piece.shape)'));
+    let expected = original;
+    for (let turn = 0; turn < 4; turn++) {
+      expected = expected.map((row, y) => row.map((_, x) => expected[expected.length - 1 - x][y]));
+      game.run('rotate()');
+      assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.piece.shape)')), expected);
+      assert.equal(game.run('JSON.stringify([state.piece.x, state.piece.y])'), position);
+      assert.equal(game.run('JSON.stringify(state.board)'), board);
+      assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+    }
+    assert.deepEqual(expected, original);
+  }
+});
+
+test('an I piece can rotate at spawn with occupied cells above the board', () => {
+  const game = loadGame();
+  game.run("state.piece = createPiece('I'); rotate()");
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.piece.shape)')), [
+    [0, 0, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 0],
+  ]);
+  assert.equal(game.run('state.piece.y'), -1);
+  assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
+});
+
 test('dense-board drawing reuses gradient and glow sprites for both block sizes', () => {
   const game = loadGame();
   game.run(`
