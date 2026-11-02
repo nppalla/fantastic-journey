@@ -124,6 +124,90 @@ function calls(canvas, name) {
   return canvas.getContext('2d').calls.filter((call) => call.name === name);
 }
 
+for (const rows of [[], [19], [18, 19], [17, 18, 19], [16, 17, 18, 19], [0, 1], [9, 10], [0, 9, 10, 19]]) {
+  for (const level of [1, 3]) {
+    test(`clearing rows [${rows}] at level ${level} preserves remaining rows and awards the full score`, () => {
+      const game = loadGame();
+      game.run(`
+        state.board.forEach((row, y) => { row[y % COLS] = 'J'; });
+        for (const y of ${JSON.stringify(rows)}) state.board[y].fill('T');
+        state.lines = ${(level - 1) * 10};
+        state.level = ${level};
+        state.score = 50;
+        updateStats();
+      `);
+      const original = JSON.parse(game.run('JSON.stringify(state.board)'));
+      const expected = [
+        ...rows.map(() => Array(10).fill(null)),
+        ...original.filter((_, y) => !rows.includes(y)),
+      ];
+
+      game.run('clearLines()');
+
+      assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expected);
+      assert.equal(game.run('state.board.length'), 20);
+      assert.equal(game.run('state.board.some((row) => row.every(Boolean))'), false);
+      assert.equal(game.run('new Set(state.board).size'), 20);
+      assert.equal(game.run('state.lines'), (level - 1) * 10 + rows.length);
+      const score = 50 + [0, 100, 300, 500, 800][rows.length] * level;
+      assert.equal(game.run('state.score'), score);
+      assert.equal(game.run('state.level'), level);
+      assert.equal(game.run('state.particles.length'), rows.length * 40);
+      assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+      assert.equal(game.elements.get('lines').textContent, (level - 1) * 10 + rows.length);
+      assert.equal(game.elements.get('level').textContent, level);
+
+      game.run('clearLines()');
+      assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expected);
+      assert.equal(game.run('state.score'), score);
+      assert.equal(game.run('state.lines'), (level - 1) * 10 + rows.length);
+      assert.equal(game.run('state.particles.length'), rows.length * 40);
+    });
+  }
+}
+
+test('a vertical piece completing two adjacent bottom rows clears both on the same drop', () => {
+  const game = loadGame();
+  game.run(`
+    startGame();
+    for (const y of [ROWS - 2, ROWS - 1]) {
+      state.board[y].fill('T');
+      state.board[y][5] = null;
+    }
+    state.piece = createPiece('I');
+    state.piece.shape = rotateMatrix(state.piece.shape);
+    hardDrop();
+  `);
+
+  assert.equal(game.run('state.lines'), 2);
+  assert.equal(game.run('state.score'), 300 + 17 * 2);
+  assert.equal(game.elements.get('score').textContent, '334');
+  assert.equal(game.elements.get('lines').textContent, 2);
+  assert.equal(game.run('state.over'), false);
+  assert.equal(game.run('state.board.slice(0, 18).every((row) => row.every((cell) => cell === null))'), true);
+  assert.deepEqual(
+    JSON.parse(game.run('JSON.stringify(state.board.slice(18))')),
+    Array.from({ length: 2 }, () => Array.from({ length: 10 }, (_, x) => x === 5 ? 'I' : null)),
+  );
+});
+
+test('a multi-line clear crossing a level boundary uses the pre-clear level for scoring', () => {
+  const game = loadGame();
+  game.run(`
+    state.lines = 9;
+    state.board[18].fill('T');
+    state.board[19].fill('T');
+    clearLines();
+  `);
+
+  assert.equal(game.run('state.lines'), 11);
+  assert.equal(game.run('state.score'), 300);
+  assert.equal(game.run('state.level'), 2);
+  assert.equal(game.elements.get('score').textContent, '300');
+  assert.equal(game.elements.get('lines').textContent, 11);
+  assert.equal(game.elements.get('level').textContent, 2);
+});
+
 test('ten restarts retain one update and draw per frame with a fresh drop timer', () => {
   const game = loadGame();
   const board = game.elements.get('board');
