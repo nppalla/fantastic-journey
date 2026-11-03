@@ -22,7 +22,7 @@ npx serve .
 
 ## Rules
 
-- Fill a full row to clear it.
+- All full rows, including adjacent rows, clear together when a piece locks.
 - Rotations that would hit a wall, the floor, or locked blocks are rejected,
   leaving the piece's shape and position unchanged.
 - Every 10 cleared lines raises the level by one.
@@ -78,5 +78,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Rotation collisions, restart scheduling, input, sprite reuse, and preview regressions |
+| `game.test.js` | Line clearing and scoring, rotation collisions, restart scheduling, input, sprite reuse, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |

@@ -276,6 +276,92 @@ test('an I piece can rotate at spawn with occupied cells above the board', () =>
   assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
 });
 
+for (const rows of [
+  [], [19], [0], [18, 19], [8, 9], [0, 1],
+  [17, 18, 19], [16, 17, 18, 19], [3, 12], [0, 8, 9, 19],
+]) {
+  for (const initialLines of [0, 9, 29]) {
+    test(`clearing rows [${rows}] with ${initialLines} prior lines preserves the board and awards the full score`, () => {
+      const game = loadGame();
+      const level = Math.floor(initialLines / 10) + 1;
+      const points = [0, 100, 300, 500, 800][rows.length] * level;
+      game.run(`
+        state.board = createBoard();
+        for (let y = 0; y < ROWS; y++) {
+          state.board[y][y % COLS] = 'IJLOSTZ'[y % 7];
+          state.board[y][(y + 1) % COLS] = 'IJLOSTZ'[Math.floor(y / 7)];
+        }
+        for (const y of ${JSON.stringify(rows)}) state.board[y].fill('T');
+        state.score = 75;
+        state.lines = ${initialLines};
+        state.level = ${level};
+        updateStats();
+      `);
+      const original = JSON.parse(game.run('JSON.stringify(state.board)'));
+      const expected = [
+        ...Array.from({ length: rows.length }, () => Array(10).fill(null)),
+        ...original.filter((_, y) => !rows.includes(y)),
+      ];
+
+      game.run('clearLines()');
+
+      assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expected);
+      assert.equal(game.run('state.board.length === ROWS && state.board.every((row) => row.length === COLS)'), true);
+      assert.equal(game.run('new Set(state.board).size'), 20);
+      assert.equal(game.run('state.board.some((row) => row.every(Boolean))'), false);
+      assert.equal(game.run('state.lines'), initialLines + rows.length);
+      assert.equal(game.run('state.score'), 75 + points);
+      assert.equal(game.run('state.level'), Math.floor((initialLines + rows.length) / 10) + 1);
+      assert.equal(game.run('state.particles.length'), rows.length * 40);
+      assert.equal(game.elements.get('score').textContent, game.run('state.score.toLocaleString()'));
+      assert.equal(game.elements.get('lines').textContent, initialLines + rows.length);
+      assert.equal(game.elements.get('level').textContent, game.run('state.level'));
+
+      const after = game.run('JSON.stringify(state)');
+      game.run('clearLines()');
+      assert.equal(game.run('JSON.stringify(state)'), after);
+    });
+  }
+}
+
+for (const count of [2, 3, 4]) {
+  test(`one keyboard hard drop clears ${count} adjacent rows before the next piece spawns`, () => {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run(`
+      for (let y = ROWS - ${count}; y < ROWS; y++) {
+        state.board[y].fill('T');
+        state.board[y][4] = null;
+      }
+      state.piece = { type: 'I', shape: rotateMatrix(SHAPES.I), x: 2, y: -1 };
+      state.nextType = 'O';
+      state.score = 50;
+      state.lines = 9;
+    `);
+    let prevented = 0;
+    game.document.dispatch('keydown', {
+      code: 'Space',
+      preventDefault() { prevented++; },
+    });
+
+    const expected = Array.from({ length: 20 }, () => Array(10).fill(null));
+    for (let y = 16 + count; y < 20; y++) expected[y][4] = 'I';
+    const score = 50 + 17 * 2 + [0, 100, 300, 500, 800][count];
+    assert.equal(prevented, 1);
+    assert.deepEqual(JSON.parse(game.run('JSON.stringify(state.board)')), expected);
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+    assert.equal(game.run('state.lines'), 9 + count);
+    assert.equal(game.elements.get('lines').textContent, 9 + count);
+    assert.equal(game.run('state.level'), 2);
+    assert.equal(game.elements.get('level').textContent, 2);
+    assert.equal(game.run('state.particles.length'), count * 40);
+    assert.equal(game.run('state.piece.type'), 'O');
+    assert.equal(game.run('state.piece.y'), 0);
+    assert.equal(game.run('state.over'), false);
+  });
+}
+
 test('dense-board drawing reuses gradient and glow sprites for both block sizes', () => {
   const game = loadGame();
   game.run(`
