@@ -33,6 +33,21 @@ npx serve .
 
 Each merge adds the value of the new tile to your score. The best score is saved in the browser.
 
+For example, sliding `2 2 4 _` left produces `4 4 _ _` and adds 4 points.
+Sliding `2 2 2 2` left produces `4 4 _ _` and adds 8 points. The resulting
+tiles can merge with each other on a later move, but not during the same move.
+
+## Tests
+
+With Node.js 18 or newer installed, run the dependency-free regression tests:
+
+```bash
+node --test merge-2048/game.test.js
+```
+
+The tests cover single-merge rules, scoring, all four move directions, and
+keyboard and swipe input.
+
 ## Files
 
 | File | Purpose |
@@ -40,3 +55,4 @@ Each merge adds the value of the new tile to your score. The best score is saved
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
+| `game.test.js` | Merge rules, directional moves, scoring, and input regressions |

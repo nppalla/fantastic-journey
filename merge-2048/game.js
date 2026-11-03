@@ -47,7 +47,7 @@ function addRandomTile() {
   state.newTile = { r, c };
 }
 
-// Slides one row to the left and merges equal neighbours.
+// Slides one row to the left; each tile can merge only once per move.
 function slideRow(row) {
   const tiles = row.filter((value) => value !== 0);
   let gained = 0;
@@ -56,7 +56,6 @@ function slideRow(row) {
       tiles[i] *= 2;
       gained += tiles[i];
       tiles.splice(i + 1, 1);
-      i--;
     }
   }
   while (tiles.length < SIZE) tiles.push(0);
