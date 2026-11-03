@@ -56,7 +56,6 @@ function slideRow(row) {
       tiles[i] *= 2;
       gained += tiles[i];
       tiles.splice(i + 1, 1);
-      i--;
     }
   }
   while (tiles.length < SIZE) tiles.push(0);
@@ -99,9 +98,11 @@ function hasWon() {
 function move(direction) {
   if (state.over || (state.won && !state.keepPlaying)) return;
 
+  const result = moveGrid(state.grid, direction);
+  if (result.grid.every((row, r) => row.every((value, c) => value === state.grid[r][c]))) return;
+
   state.history.push({ grid: JSON.parse(JSON.stringify(state.grid)) });
 
-  const result = moveGrid(state.grid, direction);
   state.grid = result.grid;
   state.score += result.gained;
   if (state.score > state.best) state.best = state.score;
