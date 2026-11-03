@@ -66,6 +66,16 @@ test('a full board with only diagonal or row-wrap matches is game over', () => {
   assert.equal(game.run('JSON.stringify(state)'), before);
 });
 
+test('equal tiles on opposite board edges are not mergeable neighbours', () => {
+  const game = loadGame([
+    [2, 4, 8, 2],
+    [4, 8, 2, 4],
+    [8, 2, 4, 8],
+    [2, 4, 8, 2],
+  ]);
+  assert.equal(game.run('isGameOver()'), true);
+});
+
 test('an empty board is not game over', () => {
   const game = loadGame(Array.from({ length: 4 }, () => Array(4).fill(0)));
   assert.equal(game.run('isGameOver()'), false);
@@ -134,6 +144,28 @@ test('filling the last empty cell without a remaining merge shows game over', ()
   const before = game.run('JSON.stringify(state)');
   game.document.dispatch('keydown', { key: 'ArrowRight' });
   assert.equal(game.run('JSON.stringify(state)'), before);
+});
+
+test('filling the last empty cell leaves a vertical merge playable through keyboard input', () => {
+  const game = loadGame([
+    [0, 4, 8, 4],
+    [8, 4, 8, 2],
+    [4, 8, 4, 8],
+    [8, 4, 8, 4],
+  ]);
+  game.run('Math.random = () => 0');
+  game.document.dispatch('keydown', { key: 'ArrowLeft' });
+
+  assert.equal(game.run('emptyCells().length'), 0);
+  assert.equal(game.run('state.grid[0][3] === state.grid[1][3]'), true);
+  assert.equal(game.run('state.over'), false);
+  assert.equal(game.elements.get('message').classList.contains('hidden'), true);
+  assert.equal(game.storage.has('merge2048.best'), false);
+
+  game.document.dispatch('keydown', { key: 'ArrowDown' });
+  assert.equal(game.run('state.score'), 4);
+  assert.equal(game.run('state.grid[1][3]'), 4);
+  assert.equal(game.elements.get('score').textContent, 4);
 });
 
 test('tiles below 2048 do not win the game', () => {
