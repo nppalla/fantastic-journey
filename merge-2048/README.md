@@ -40,3 +40,14 @@ Each merge adds the value of the new tile to your score. The best score is saved
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
+| `game.test.js` | Game logic and message regression tests |
+
+## Tests
+
+Run the regression tests from the repository root with Node.js 18 or later:
+
+```bash
+node --test merge-2048/game.test.js
+```
+
+The tests need no additional dependencies.
