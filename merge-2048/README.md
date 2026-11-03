@@ -33,6 +33,14 @@ npx serve .
 
 Each merge adds the value of the new tile to your score. The best score is saved in the browser.
 
+## Tests
+
+Run the merge, move-validity, and scoring regression tests from the repository root with Node.js 18 or later:
+
+```bash
+node --test merge-2048/game.test.js
+```
+
 ## Files
 
 | File | Purpose |
@@ -40,3 +48,4 @@ Each merge adds the value of the new tile to your score. The best score is saved
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
+| `game.test.js` | Merge, move-validity, and scoring regression tests |
