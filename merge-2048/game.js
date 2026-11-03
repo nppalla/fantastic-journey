@@ -98,9 +98,11 @@ function hasWon() {
 function move(direction) {
   if (state.over || (state.won && !state.keepPlaying)) return;
 
-  state.history.push({ grid: JSON.parse(JSON.stringify(state.grid)) });
-
   const result = moveGrid(state.grid, direction);
+  const changed = result.grid.some((row, r) => row.some((value, c) => value !== state.grid[r][c]));
+  if (!changed) return;
+
+  state.history.push({ grid: JSON.parse(JSON.stringify(state.grid)) });
   state.grid = result.grid;
   state.score += result.gained;
   if (state.score > state.best) state.best = state.score;

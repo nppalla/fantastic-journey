@@ -9,6 +9,8 @@ const vm = require('node:vm');
 const source = readFileSync(join(__dirname, 'game.js'), 'utf8');
 
 function loadGame() {
+  const metrics = { randomCalls: 0, createdElements: 0, storageWrites: 0 };
+
   function createElement() {
     const listeners = new Map();
     const classes = new Set();
@@ -39,21 +41,33 @@ function loadGame() {
   }
   const document = Object.assign(createElement(), {
     getElementById: (id) => elements.get(id),
-    createElement,
+    createElement(tag) {
+      assert.equal(tag, 'div');
+      metrics.createdElements++;
+      return createElement();
+    },
   });
   const storage = new Map();
   const sandbox = vm.createContext({
     document,
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, value),
+      setItem(key, value) {
+        metrics.storageWrites++;
+        storage.set(key, value);
+      },
     },
-    Math: Object.assign(Object.create(Math), { random: () => 0 }),
+    Math: Object.assign(Object.create(Math), {
+      random() {
+        metrics.randomCalls++;
+        return 0;
+      },
+    }),
   });
   const run = (code) => vm.runInContext(code, sandbox);
   run(source);
   return {
-    document, elements, run,
+    document, elements, metrics, run,
     json: (code) => JSON.parse(run(`JSON.stringify(${code})`)),
   };
 }
@@ -92,6 +106,23 @@ function placeRow(row, direction) {
   return grid;
 }
 
+function sendMove(game, direction, input) {
+  if (input === 'direct') {
+    game.run(`move('${direction}')`);
+  } else if (input === 'keyboard') {
+    const key = `Arrow${direction[0].toUpperCase()}${direction.slice(1)}`;
+    game.document.dispatch('keydown', { key });
+  } else {
+    const board = game.elements.get('board');
+    board.dispatch('touchstart', { touches: [{ clientX: 100, clientY: 100 }] });
+    const offsets = { left: [-60, 0], right: [60, 0], up: [0, -60], down: [0, 60] };
+    const [dx, dy] = offsets[direction];
+    board.dispatch('touchend', {
+      changedTouches: [{ clientX: 100 + dx, clientY: 100 + dy }],
+    });
+  }
+}
+
 for (const direction of ['left', 'right', 'up', 'down']) {
   for (const { row, expected, gained } of rowCases.slice(0, 2)) {
     test(`moving ${direction} merges ${row} only once per tile`, () => {
@@ -111,18 +142,7 @@ for (const direction of ['left', 'right', 'up', 'down']) {
       const game = loadGame();
       const grid = placeRow([2, 2, 4, 0], direction);
       game.run(`state.grid = ${JSON.stringify(grid)}; state.score = 10; state.best = 10`);
-      if (input === 'keyboard') {
-        const key = `Arrow${direction[0].toUpperCase()}${direction.slice(1)}`;
-        game.document.dispatch('keydown', { key });
-      } else {
-        const board = game.elements.get('board');
-        board.dispatch('touchstart', { touches: [{ clientX: 100, clientY: 100 }] });
-        const offsets = { left: [-60, 0], right: [60, 0], up: [0, -60], down: [0, 60] };
-        const [dx, dy] = offsets[direction];
-        board.dispatch('touchend', {
-          changedTouches: [{ clientX: 100 + dx, clientY: 100 + dy }],
-        });
-      }
+      sendMove(game, direction, input);
 
       const actual = game.json('state.grid');
       const expected = placeRow([4, 4, 0, 0], direction);
@@ -137,6 +157,28 @@ for (const direction of ['left', 'right', 'up', 'down']) {
       assert.equal(game.elements.get('best').textContent, 14);
       assert.equal(game.run('state.history.length'), 1);
       assert.deepEqual(game.json('state.history[0].grid'), grid);
+    });
+  }
+
+  for (const input of ['direct', 'keyboard', 'swipe']) {
+    test(`blocked ${input} moves ${direction} leave state and side effects unchanged`, () => {
+      const game = loadGame();
+      const grid = placeRow([2, 4, 8, 16], direction);
+      game.run(`
+        state.grid = ${JSON.stringify(grid)};
+        state.score = 12;
+        state.best = 24;
+        state.history = [{ grid: emptyGrid() }];
+        state.newTile = { r: 0, c: 0 };
+        render();
+      `);
+      const before = game.json('state');
+      const metrics = { ...game.metrics };
+      for (let i = 0; i < 3; i++) {
+        sendMove(game, direction, input);
+        assert.deepEqual(game.json('state'), before);
+        assert.deepEqual(game.metrics, metrics);
+      }
     });
   }
 }
@@ -156,3 +198,21 @@ test('moving a full board sums independent merges across rows', () => {
     gained: 20,
   });
 });
+
+for (const { name, row, expected, score } of [
+  { name: 'slide-only', row: [0, 2, 0, 0], expected: [2, 2, 0, 0], score: 0 },
+  { name: 'merge-only', row: [2, 2, 4, 8], expected: [4, 4, 8, 2], score: 4 },
+]) {
+  test(`a valid ${name} move still adds exactly one tile and undo entry`, () => {
+    const game = loadGame();
+    const grid = placeRow(row, 'left');
+    game.run(`state.grid = ${JSON.stringify(grid)}; state.newTile = null`);
+    const randomCalls = game.metrics.randomCalls;
+    game.run("move('left')");
+    assert.deepEqual(game.json('state.grid'), placeRow(expected, 'left'));
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.run('state.history.length'), 1);
+    assert.deepEqual(game.json('state.history[0].grid'), grid);
+    assert.equal(game.metrics.randomCalls - randomCalls, 2);
+  });
+}

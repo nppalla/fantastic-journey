@@ -24,7 +24,7 @@ npx serve .
 - Each move slides every tile as far as it can go.
 - Two touching tiles with the same number merge into one tile.
 - A tile merges only once in each move.
-- A move that changes nothing does not count.
+- A move that changes nothing does not count: no new tile or undo entry is added.
 - Each valid move adds a new 2 or 4 tile.
 - You win when you make a 2048 tile.
 - The game ends when no move can change the board.
@@ -45,8 +45,8 @@ With Node.js 18 or newer installed, run the dependency-free regression tests:
 node --test merge-2048/game.test.js
 ```
 
-The tests cover single-merge rules, scoring, all four move directions, and
-keyboard and swipe input.
+The tests cover single-merge rules, scoring, all four move directions, keyboard
+and swipe input, and blocked moves leaving the board and undo history unchanged.
 
 ## Files
 
