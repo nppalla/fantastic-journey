@@ -199,6 +199,90 @@ test('restarting registers keyboard input only once', () => {
   assert.equal(prevented, 1);
 });
 
+for (const { y, score } of [
+  { y: 0, score: 0 },
+  { y: 7, score: 1000 },
+  { y: 18, score: 1234 },
+]) {
+  test(`Space immediately displays the score after dropping ${18 - y} rows without clearing lines`, () => {
+    const game = loadGame();
+    game.elements.get('start-btn').dispatch('click');
+    game.run(`
+      state.piece = { ...createPiece('O'), y: ${y} };
+      state.score = ${score};
+      state.dropCounter = 500;
+      updateStats();
+    `);
+    let prevented = 0;
+    game.document.dispatch('keydown', {
+      code: 'Space',
+      preventDefault() { prevented++; },
+    });
+
+    const expectedScore = score + (18 - y) * 2;
+    assert.equal(prevented, 1);
+    assert.equal(game.run('state.score'), expectedScore);
+    assert.equal(game.elements.get('score').textContent, expectedScore.toLocaleString());
+    assert.equal(game.run('state.lines'), 0);
+    assert.equal(game.elements.get('lines').textContent, 0);
+    assert.equal(game.run('state.level'), 1);
+    assert.equal(game.elements.get('level').textContent, 1);
+    assert.equal(game.run('state.dropCounter'), 0);
+    assert.equal(game.run('state.board.flat().filter(Boolean).length'), 4);
+  });
+}
+
+test('successive hard drops immediately display cumulative points without a line clear', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  for (const expectedScore of [36, 68]) {
+    game.run("state.piece = createPiece('O')");
+    game.document.dispatch('keydown', { code: 'Space', preventDefault() {} });
+    assert.equal(game.run('state.score'), expectedScore);
+    assert.equal(game.elements.get('score').textContent, expectedScore.toLocaleString());
+    assert.equal(game.run('state.lines'), 0);
+  }
+});
+
+test('a hard drop displays drop and line-clear points once while updating lines and level', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run(`
+    state.piece = createPiece('O');
+    state.board[ROWS - 1] = Array(COLS).fill('I');
+    state.board[ROWS - 1][4] = null;
+    state.board[ROWS - 1][5] = null;
+    state.score = 1000;
+    state.lines = 9;
+    updateStats();
+  `);
+  game.document.dispatch('keydown', { code: 'Space', preventDefault() {} });
+  assert.equal(game.run('state.score'), 1136);
+  assert.equal(game.elements.get('score').textContent, (1136).toLocaleString());
+  assert.equal(game.run('state.lines'), 10);
+  assert.equal(game.elements.get('lines').textContent, 10);
+  assert.equal(game.run('state.level'), 2);
+  assert.equal(game.elements.get('level').textContent, 2);
+});
+
+test('a hard drop that ends the game keeps the Score panel and final score in sync', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run(`
+    state.piece = { ...createPiece('O'), y: 2 };
+    state.nextType = 'O';
+    state.board[0][4] = 'T';
+    state.score = 1000;
+    updateStats();
+  `);
+  game.document.dispatch('keydown', { code: 'Space', preventDefault() {} });
+  assert.equal(game.run('state.over'), true);
+  assert.equal(game.run('state.running'), false);
+  assert.equal(game.run('state.score'), 1032);
+  assert.equal(game.elements.get('score').textContent, (1032).toLocaleString());
+  assert.equal(game.elements.get('overlay-text').textContent, `Final score: ${(1032).toLocaleString()}`);
+});
+
 for (const { name, setup } of [
   {
     name: 'left wall',

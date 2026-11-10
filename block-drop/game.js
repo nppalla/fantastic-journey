@@ -134,6 +134,7 @@ function hardDrop() {
     distance++;
   }
   state.score += distance * 2;
+  updateStats();
   lockPiece();
   state.dropCounter = 0;
 }

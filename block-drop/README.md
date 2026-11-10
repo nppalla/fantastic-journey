@@ -38,7 +38,8 @@ npx serve .
 | 3 | 500 x level |
 | 4 | 800 x level |
 
-A hard drop gives 2 points for each row the piece falls.
+A hard drop gives 2 points for each row the piece falls. The Score panel updates
+immediately, even when no line is cleared.
 
 ## Rendering
 
@@ -78,5 +79,5 @@ machine and browser, so they are not a guarantee for every device.
 | `index.html` | Page layout, board, and side panel |
 | `style.css` | Theme and layout |
 | `game.js` | Game state, input, game loop, and rendering |
-| `game.test.js` | Rotation collisions, restart scheduling, input, sprite reuse, and preview regressions |
+| `game.test.js` | Hard-drop scoring, rotation collisions, restart scheduling, input, sprite reuse, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
