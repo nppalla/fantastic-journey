@@ -89,7 +89,15 @@ function moveGrid(grid, direction) {
 }
 
 function isGameOver() {
-  return emptyCells().length === 0;
+  if (emptyCells().length > 0) return false;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const value = state.grid[r][c];
+      if (c + 1 < SIZE && value === state.grid[r][c + 1]) return false;
+      if (r + 1 < SIZE && value === state.grid[r + 1][c]) return false;
+    }
+  }
+  return true;
 }
 
 function hasWon() {

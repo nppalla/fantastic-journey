@@ -27,11 +27,19 @@ npx serve .
 - A move that changes nothing does not count.
 - Each valid move adds a new 2 or 4 tile.
 - You win when you make a 2048 tile.
-- The game ends when no move can change the board.
+- The game ends only when the board is full and no equal tiles touch horizontally or vertically.
 
 ## Scoring
 
 Each merge adds the value of the new tile to your score. The best score is saved in the browser.
+
+## Tests
+
+Run the game-logic regression tests with Node.js:
+
+```bash
+node --test merge-2048/game.test.js
+```
 
 ## Files
 
@@ -40,3 +48,4 @@ Each merge adds the value of the new tile to your score. The best score is saved
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
+| `game.test.js` | Game-over detection and message regression tests |
