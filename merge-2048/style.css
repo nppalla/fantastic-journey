@@ -123,6 +123,7 @@ body {
 
 .cell {
   position: relative;
+  container-type: inline-size;
   border-radius: 6px;
   background: var(--cell);
 }
@@ -136,21 +137,15 @@ body {
   border-radius: 6px;
   font-size: 3rem;
   font-weight: 700;
-  animation: pop 0.15s ease;
 }
 
-.tile-new {
-  animation: appear 0.2s ease;
+.tile[hidden] {
+  display: none;
 }
 
 @keyframes appear {
   from { transform: scale(0); }
   to { transform: scale(1); }
-}
-
-@keyframes pop {
-  0% { transform: scale(0.9); }
-  100% { transform: scale(1); }
 }
 
 .tile-2 { background: #eee4da; color: #f9f6f2; }
@@ -164,6 +159,12 @@ body {
 .tile-512 { background: #edc850; color: #f9f6f2; font-size: 2.4rem; box-shadow: 0 0 26px rgba(243, 215, 116, 0.6); }
 .tile-1024 { background: #edc53f; color: #f9f6f2; box-shadow: 0 0 30px rgba(243, 215, 116, 0.7); }
 .tile-2048 { background: #edc22e; color: #f9f6f2; box-shadow: 0 0 34px rgba(243, 215, 116, 0.8); }
+
+@container (width < 80px) {
+  .tile {
+    font-size: 45cqw;
+  }
+}
 
 .message {
   position: absolute;

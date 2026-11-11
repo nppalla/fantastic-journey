@@ -14,6 +14,17 @@ const retryBtn = document.getElementById('retry-btn');
 const undoBtn = document.getElementById('undo-btn');
 const newBtn = document.getElementById('new-btn');
 
+const renderedTiles = Array.from({ length: SIZE * SIZE }, () => {
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+  const tile = document.createElement('div');
+  tile.className = 'tile';
+  tile.hidden = true;
+  cell.appendChild(tile);
+  boardEl.appendChild(cell);
+  return { element: tile, value: 0, animation: null };
+});
+
 const state = {
   grid: [],
   score: 0,
@@ -130,28 +141,30 @@ function undo() {
 }
 
 function render() {
-  boardEl.innerHTML = '';
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
-      const cell = document.createElement('div');
-      cell.className = 'cell';
       const value = state.grid[r][c];
+      const rendered = renderedTiles[r * SIZE + c];
+      const tile = rendered.element;
+      const label = value ? String(value) : '';
+      const isNew = state.newTile && state.newTile.r === r && state.newTile.c === c;
+      if (rendered.value === value && !isNew) continue;
+
+      if (rendered.animation) rendered.animation.cancel();
+      rendered.animation = null;
+      rendered.value = value;
+      tile.textContent = label;
+      tile.className = value ? `tile tile-${value}` : 'tile';
+      tile.hidden = !value;
       if (value) {
-        const tile = document.createElement('div');
-        tile.className = `tile tile-${value}`;
-        if (state.newTile && state.newTile.r === r && state.newTile.c === c) {
-          tile.classList.add('tile-new');
-        }
-        tile.textContent = value;
-        cell.appendChild(tile);
-        // Keep the label inside the tile on narrow screens.
-        if (tile.offsetWidth < 80) {
-          tile.style.fontSize = `${tile.offsetWidth * 0.45}px`;
-        }
+        rendered.animation = tile.animate([
+          { transform: `scale(${isNew ? 0 : 0.9})` },
+          { transform: 'scale(1)' },
+        ], { duration: isNew ? 200 : 150, easing: 'ease' });
       }
-      boardEl.appendChild(cell);
     }
   }
+  state.newTile = null;
   scoreEl.textContent = state.score;
   bestEl.textContent = state.best;
   undoBtn.disabled = state.history.length === 0;
