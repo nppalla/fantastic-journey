@@ -48,4 +48,4 @@ node --test merge-2048/game.test.js
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
-| `game.test.js` | Game-logic and message regression tests |
+| `game.test.js` | Game-over detection and message regression tests |
