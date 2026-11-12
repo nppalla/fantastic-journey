@@ -1,11 +1,12 @@
-# Fantastic Journey Arcade
+# Fantastic Journey Samples
 
-Two small browser games. They need no build step and no dependencies.
+Two small browser games and a browser-local business sample. They need no build step and no dependencies.
 
 | Game | Folder | Description |
 | --- | --- | --- |
 | Block Drop | [`block-drop/`](block-drop/) | Falling-blocks puzzle on a canvas |
 | Merge 2048 | [`merge-2048/`](merge-2048/) | Sliding-tile number puzzle |
+| Expense Tracker | [`expense-tracker/`](expense-tracker/) | Fictional expenses with local receipt images and CSV export |
 
 ## Run
 
