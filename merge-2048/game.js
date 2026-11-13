@@ -177,8 +177,10 @@ function showMessage(text, canContinue) {
 }
 
 function hideMessage() {
+  const returnToBoard = messageEl.contains(document.activeElement);
   messageEl.classList.add('hidden');
   gameStatusEl.textContent = '';
+  if (returnToBoard) boardEl.focus({ preventScroll: true });
 }
 
 function newGame() {

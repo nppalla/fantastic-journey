@@ -39,6 +39,7 @@ Each merge adds the value of the new tile to your score. The best score is saved
 - Tab to the labelled game board to focus it. Screen reader users can browse it as a four-by-four table, with labels for each tile's row, column, and value (including empty cells). Switch to focus or pass-through mode to play with the arrow keys.
 - Score changes are announced politely with the score label. Unchanged scores are not re-announced.
 - Win and game-over messages are announced without needing to find the overlay.
+- Keep going and Try again return keyboard focus to the board when their overlay closes. Other controls retain their focus.
 
 ## Checks
 

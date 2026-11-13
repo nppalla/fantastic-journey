@@ -138,6 +138,27 @@ function checkAccessibility() {
     check(status.textContent === '' && messageEl.classList.contains('hidden'), 'Retry must clear the message');
   });
 
+  run('dismissing an overlay returns focus from its hidden action to the board', () => {
+    newGame();
+    newBtn.focus();
+    newBtn.click();
+    check(document.activeElement === newBtn, 'Toolbar actions must retain their own focus');
+    showMessage('You win!', true);
+    continueBtn.focus();
+    continueBtn.click();
+    check(document.activeElement === boardEl, 'Keep going must return focus to the board');
+    check(messageEl.classList.contains('hidden'), 'Keep going must hide the overlay');
+    showMessage('Game over', false);
+    retryBtn.focus();
+    retryBtn.click();
+    check(document.activeElement === boardEl, 'Try again must return focus to the board');
+    check(boardEl.querySelectorAll('.tile').length === 2, 'Try again must start a fresh game');
+    newBtn.focus();
+    showMessage('You win!', true);
+    newBtn.click();
+    check(document.activeElement === newBtn, 'Hiding an overlay must not steal focus from the toolbar');
+  });
+
   return results;
 }
 
@@ -168,7 +189,7 @@ test('Merge 2048 accessibility in Chromium', async (t) => {
     const match = browser.stdout.match(/<pre id="result">([^<]+)<\/pre>/);
     assert.ok(match, `Chromium did not return accessibility results: ${browser.stderr}`);
     const results = JSON.parse(match[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
-    assert.equal(results.length, 4);
+    assert.equal(results.length, 5);
     for (const result of results) {
       await t.test(result.name, () => assert.equal(result.error, undefined, result.error));
     }
