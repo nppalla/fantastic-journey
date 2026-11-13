@@ -171,6 +171,8 @@ function clearLines() {
       state.board.unshift(Array(COLS).fill(null));
       spawnParticles(y);
       cleared++;
+      // Recheck the row shifted down into this index.
+      y++;
     }
   }
   if (cleared > 0) {

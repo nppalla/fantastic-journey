@@ -276,6 +276,92 @@ test('an I piece can rotate at spawn with occupied cells above the board', () =>
   assert.equal(game.run('collides(state.piece.shape, state.piece.x, state.piece.y)'), false);
 });
 
+for (const { name, rows } of [
+  { name: 'no full rows', rows: [] },
+  { name: 'a single bottom row', rows: [19] },
+  { name: 'two adjacent bottom rows', rows: [18, 19] },
+  { name: 'three adjacent bottom rows', rows: [17, 18, 19] },
+  { name: 'four adjacent bottom rows', rows: [16, 17, 18, 19] },
+  { name: 'adjacent middle rows', rows: [8, 9] },
+  { name: 'adjacent top rows', rows: [0, 1] },
+  { name: 'separated full rows', rows: [3, 8, 14, 19] },
+  { name: 'two separated pairs of adjacent rows', rows: [0, 1, 7, 8] },
+]) {
+  test(`clearing ${name} preserves survivors and awards the simultaneous-clear score`, () => {
+    const game = loadGame();
+    game.run(`
+      state.board = createBoard().map((row, y) => row.map((_, x) =>
+        x === y % COLS ? 'IJLOSTZ'[y % 7] : null));
+      for (const y of ${JSON.stringify(rows)}) state.board[y].fill('I');
+      state.score = 25;
+      state.lines = 20;
+      state.level = 3;
+      updateStats();
+    `);
+    const originalRows = Array.from(game.run('state.board'));
+    game.run('clearLines()');
+    const board = Array.from(game.run('state.board'));
+    const score = 25 + [0, 100, 300, 500, 800][rows.length] * 3;
+
+    assert.equal(board.length, 20);
+    assert.equal(board.every((row) => row.length === 10), true);
+    assert.equal(game.run('new Set(state.board).size'), 20);
+    assert.equal(board.slice(0, rows.length).every((row) => row.every((cell) => cell === null)), true);
+    assert.deepEqual(board.slice(rows.length), originalRows.filter((_, y) => !rows.includes(y)));
+    assert.equal(board.some((row) => row.every(Boolean)), false);
+    assert.equal(game.run('state.score'), score);
+    assert.equal(game.run('state.lines'), 20 + rows.length);
+    assert.equal(game.run('state.level'), 3);
+    assert.equal(game.run('state.particles.length'), rows.length * 40);
+    assert.equal(game.elements.get('score').textContent, score.toLocaleString());
+    assert.equal(game.elements.get('lines').textContent, 20 + rows.length);
+    assert.equal(game.elements.get('level').textContent, 3);
+  });
+}
+
+test('a multi-line clear uses the current level before advancing past ten lines', () => {
+  const game = loadGame();
+  game.run(`
+    state.board[18].fill('I');
+    state.board[19].fill('I');
+    state.lines = 9;
+    clearLines();
+  `);
+  assert.equal(game.run('state.score'), 300);
+  assert.equal(game.run('state.lines'), 11);
+  assert.equal(game.run('state.level'), 2);
+  assert.equal(game.elements.get('score').textContent, '300');
+  assert.equal(game.elements.get('lines').textContent, 11);
+  assert.equal(game.elements.get('level').textContent, 2);
+});
+
+test('a keyboard hard drop fills a shared gap and clears both bottom rows before spawning', () => {
+  const game = loadGame();
+  game.elements.get('start-btn').dispatch('click');
+  game.run(`
+    state.board[18].fill('J');
+    state.board[19].fill('L');
+    state.board[18][4] = state.board[19][4] = null;
+    state.piece = { ...createPiece('I'), shape: rotateMatrix(SHAPES.I), x: 2, y: 0 };
+    state.nextType = 'O';
+  `);
+  let prevented = 0;
+  game.document.dispatch('keydown', {
+    code: 'Space',
+    preventDefault() { prevented++; },
+  });
+  assert.equal(prevented, 1);
+  assert.equal(game.run('state.lines'), 2);
+  assert.equal(game.run('state.score'), 300 + 16 * 2);
+  assert.equal(game.run('state.board.flat().filter(Boolean).length'), 2);
+  assert.equal(game.run('state.board[18][4] === "I" && state.board[19][4] === "I"'), true);
+  assert.equal(game.run('state.board.some((row) => row.every(Boolean))'), false);
+  assert.equal(game.run('state.piece.type'), 'O');
+  assert.equal(game.run('state.over'), false);
+  assert.equal(game.elements.get('score').textContent, '332');
+  assert.equal(game.elements.get('lines').textContent, 2);
+});
+
 test('dense-board drawing reuses gradient and glow sprites for both block sizes', () => {
   const game = loadGame();
   game.run(`
