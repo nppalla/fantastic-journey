@@ -99,7 +99,10 @@ function hasWon() {
 function move(direction) {
   if (state.over || (state.won && !state.keepPlaying)) return;
 
-  state.history.push({ grid: JSON.parse(JSON.stringify(state.grid)) });
+  state.history.push({
+    grid: JSON.parse(JSON.stringify(state.grid)),
+    score: state.score,
+  });
 
   const result = moveGrid(state.grid, direction);
   state.grid = result.grid;
@@ -124,6 +127,7 @@ function undo() {
   const previous = state.history.pop();
   if (!previous) return;
   state.grid = previous.grid;
+  state.score = previous.score;
   state.over = false;
   hideMessage();
   render();
