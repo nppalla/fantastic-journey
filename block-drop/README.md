@@ -40,6 +40,19 @@ npx serve .
 
 A hard drop gives 2 points for each row the piece falls.
 
+## Accessibility
+
+Start, pause/resume, and restart controls have descriptive screen-reader names.
+The board and next-piece preview have text labels, and the preview label tracks
+the upcoming piece. Tab to the board to read the controls; screen-reader users
+may need focus or pass-through mode to send gameplay keys.
+
+Score, lines, and level changes are announced politely with their labels,
+including hard-drop points and resets. Unchanged values are not re-announced.
+Pause and game-over overlays are named dialogs that focus their action button;
+starting or resuming returns focus to the board. The dialogs are non-modal, so
+the side-panel controls remain available.
+
 ## Rendering
 
 The first game starts one update/draw loop. Restarting resets game state and the
@@ -66,6 +79,12 @@ For real-canvas rendering checks and dense-board timing, install Chromium and ru
 node --test block-drop/game.test.js block-drop/game.browser.test.js
 ```
 
+For accessible names, dialog focus, and live-stat announcements, run:
+
+```bash
+node --test block-drop/accessibility.browser.test.js
+```
+
 The browser executable defaults to `chromium`; set `CHROMIUM` to its path if
 needed. The browser check reports cold and warmed full-board drawing times and
 checks the warmed p95 against the issue's 16 ms target. Timings depend on the
@@ -80,3 +99,4 @@ machine and browser, so they are not a guarantee for every device.
 | `game.js` | Game state, input, game loop, and rendering |
 | `game.test.js` | Rotation collisions, restart scheduling, input, sprite reuse, and preview regressions |
 | `game.browser.test.js` | Real-canvas appearance and dense-board rendering checks |
+| `accessibility.browser.test.js` | Chromium accessible-name, dialog-focus, and live-stat regression checks |
