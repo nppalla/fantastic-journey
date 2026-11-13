@@ -31,7 +31,16 @@ npx serve .
 
 ## Scoring
 
-Each merge adds the value of the new tile to your score. The best score is saved in the browser.
+Each merge adds the value of the new tile to your score. A new best score is saved
+in the browser immediately, so it survives starting a new game or reloading the page.
+
+## Tests
+
+With Node.js 18 or newer installed, run the dependency-free regression tests:
+
+```bash
+node --test merge-2048/game.test.js
+```
 
 ## Files
 
@@ -40,3 +49,4 @@ Each merge adds the value of the new tile to your score. The best score is saved
 | `index.html` | Page layout, scores, board, and help text |
 | `style.css` | Theme, board, and tile colors |
 | `game.js` | Game state, move logic, input, and rendering |
+| `game.test.js` | Best-score persistence across moves, reloads, resets, and undo |

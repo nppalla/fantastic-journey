@@ -104,7 +104,10 @@ function move(direction) {
   const result = moveGrid(state.grid, direction);
   state.grid = result.grid;
   state.score += result.gained;
-  if (state.score > state.best) state.best = state.score;
+  if (state.score > state.best) {
+    state.best = state.score;
+    localStorage.setItem(BEST_KEY, String(state.best));
+  }
 
   addRandomTile();
 
@@ -113,7 +116,6 @@ function move(direction) {
     showMessage('You win!', true);
   } else if (isGameOver()) {
     state.over = true;
-    localStorage.setItem(BEST_KEY, String(state.best));
     showMessage('Game over', false);
   }
 
