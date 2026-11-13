@@ -321,6 +321,48 @@ async function checkReceipts(frame, check, load, idle) {
   check(revoked.has(leavingUrl) && get("receipt-preview").hidden,
     "page exit revokes the current preview URL");
   await close();
+  win().dispatchEvent(new (win().PageTransitionEvent)("pageshow", { persisted: true }));
+  await idle();
+  check(!get("receipt-dialog").open && !get("receipt-preview").hasAttribute("src"),
+    "returning to a cached page does not reopen a closed receipt dialog");
+
+  const originalDecode = win().HTMLImageElement.prototype.decode;
+  let finishDecode;
+  let signalDecode;
+  const decoding = new Promise(resolve => { signalDecode = resolve; });
+  const decodeGate = new Promise(resolve => { finishDecode = resolve; });
+  win().HTMLImageElement.prototype.decode = async function () {
+    await originalDecode.call(this);
+    signalDecode();
+    await decodeGate;
+  };
+  try {
+    buttons("receipt")[0].click();
+    await decoding;
+    win().dispatchEvent(new (win().PageTransitionEvent)("pagehide", { persisted: true }));
+  } finally {
+    finishDecode();
+    win().HTMLImageElement.prototype.decode = originalDecode;
+  }
+  await idle();
+  check(get("receipt-preview").hidden && !get("receipt-preview").hasAttribute("src") &&
+    [...created].every(url => revoked.has(url)),
+    "a preview that finishes loading after page exit does not recreate a live image URL");
+
+  win().dispatchEvent(new (win().PageTransitionEvent)("pageshow", { persisted: true }));
+  await idle();
+  const restoredUrl = get("receipt-preview").src;
+  check(get("receipt-dialog").open && !get("receipt-preview").hidden &&
+    restoredUrl !== leavingUrl && !revoked.has(restoredUrl) && receipt().id === "in-flight",
+    "returning to a cached page restores an open receipt preview with a fresh live URL");
+  win().dispatchEvent(new (win().PageTransitionEvent)("pagehide", { persisted: true }));
+  check(revoked.has(restoredUrl), "leaving a restored page revokes its replacement preview URL");
+  win().dispatchEvent(new (win().PageTransitionEvent)("pageshow", { persisted: true }));
+  await idle();
+  check(!get("receipt-preview").hidden && !revoked.has(get("receipt-preview").src),
+    "receipt previews survive repeated cached-page hide and restore cycles");
+  await close();
+  check([...created].every(url => revoked.has(url)), "closing a restored preview releases every temporary image URL");
 
   const beforeBlocked = localStorage.getItem(key);
   const transactionMethod = win().IDBDatabase.prototype.transaction;

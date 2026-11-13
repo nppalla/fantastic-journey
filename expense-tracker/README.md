@@ -34,6 +34,9 @@ serving the folder is recommended for consistent persistence.
 - Open **Manage receipt** with the keyboard to preview an attached image. Native
   dialog focus containment, Escape, and Close preview are supported. Temporary
   image URLs are revoked on replacement, closing the preview, and page exit.
+  Pending preview loads cannot recreate a URL after page exit. Returning through
+  the browser's back/forward cache restores an open preview with a fresh URL;
+  closed previews stay closed.
 
 This is a **fictional-data demo, not an accounting system**. Data is unencrypted,
 not shared across devices, and disappears when site data is cleared. CSV is an
