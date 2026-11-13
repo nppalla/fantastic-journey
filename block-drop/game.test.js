@@ -50,7 +50,11 @@ function loadGame() {
   function createElement() {
     const listeners = new Map();
     const classes = new Set();
+    const attributes = new Map();
     return {
+      setAttribute: (name, value) => attributes.set(name, String(value)),
+      getAttribute: (name) => attributes.get(name) ?? null,
+      focus() { document.activeElement = this; },
       classList: {
         add: (name) => classes.add(name),
         remove: (name) => classes.delete(name),
