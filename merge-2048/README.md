@@ -33,6 +33,25 @@ npx serve .
 
 Each merge adds the value of the new tile to your score. The best score is saved in the browser.
 
+## Rendering
+
+The board reuses its 16 cells and tile elements. Only changed or newly spawned
+tiles animate; unchanged tiles keep their current animations. CSS container
+queries size labels on narrow boards without JavaScript layout reads.
+
+## Tests
+
+Run the rendering regression tests with Node.js and Chromium installed:
+
+```bash
+node --test merge-2048/game.browser.test.js
+```
+
+Run this command from the repository root. Set `CHROMIUM` to the browser executable
+path if it is not named `chromium`. The tests check element reuse, animations,
+responsive sizing, game controls, and Chromium traces for synchronous layouts
+during rendering.
+
 ## Files
 
 | File | Purpose |
