@@ -9,6 +9,7 @@ const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
 const messageEl = document.getElementById('message');
 const messageText = document.getElementById('message-text');
+const gameStatusEl = document.getElementById('game-status');
 const continueBtn = document.getElementById('continue-btn');
 const retryBtn = document.getElementById('retry-btn');
 const undoBtn = document.getElementById('undo-btn');
@@ -132,10 +133,19 @@ function undo() {
 function render() {
   boardEl.innerHTML = '';
   for (let r = 0; r < SIZE; r++) {
+    const row = document.createElement('div');
+    row.className = 'board-row';
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', String(r + 1));
+    boardEl.appendChild(row);
     for (let c = 0; c < SIZE; c++) {
       const cell = document.createElement('div');
       cell.className = 'cell';
       const value = state.grid[r][c];
+      cell.setAttribute('role', 'cell');
+      cell.setAttribute('aria-colindex', String(c + 1));
+      cell.setAttribute('aria-label', `Row ${r + 1}, column ${c + 1}: ${value || 'empty'}`);
+      row.appendChild(cell);
       if (value) {
         const tile = document.createElement('div');
         tile.className = `tile tile-${value}`;
@@ -149,10 +159,12 @@ function render() {
           tile.style.fontSize = `${tile.offsetWidth * 0.45}px`;
         }
       }
-      boardEl.appendChild(cell);
     }
   }
-  scoreEl.textContent = state.score;
+  const score = String(state.score);
+  if (scoreEl.textContent !== score) {
+    scoreEl.textContent = score;
+  }
   bestEl.textContent = state.best;
   undoBtn.disabled = state.history.length === 0;
 }
@@ -161,10 +173,14 @@ function showMessage(text, canContinue) {
   messageText.textContent = text;
   continueBtn.hidden = !canContinue;
   messageEl.classList.remove('hidden');
+  gameStatusEl.textContent = text;
 }
 
 function hideMessage() {
+  const returnToBoard = messageEl.contains(document.activeElement);
   messageEl.classList.add('hidden');
+  gameStatusEl.textContent = '';
+  if (returnToBoard) boardEl.focus({ preventScroll: true });
 }
 
 function newGame() {
