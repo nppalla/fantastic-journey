@@ -51,7 +51,8 @@ Score, lines, and level changes are announced politely with their labels,
 including hard-drop points and resets. Unchanged values are not re-announced.
 Pause and game-over overlays are named dialogs that focus their action button;
 starting or resuming returns focus to the board. The dialogs are non-modal, so
-the side-panel controls remain available.
+the side-panel controls remain available. Gameplay keys cannot change the board
+while paused, and modified browser shortcuts are left untouched.
 
 ## Rendering
 

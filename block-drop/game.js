@@ -391,6 +391,8 @@ function endGame() {
 
 function handleKey(event) {
   if (!state.running || state.over) return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (state.paused && event.code !== 'KeyP') return;
   if (event.target?.closest?.('input, select, textarea, [contenteditable]')) return;
   if (event.code !== 'KeyP' && event.target?.closest?.('button, a')) return;
   switch (event.code) {

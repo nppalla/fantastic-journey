@@ -57,6 +57,15 @@ function checkAccessibility() {
     press(startBtn, 'Space');
     check(JSON.stringify({ board: state.board, piece: state.piece, score: state.score }) === pausedState,
       'Space on the dialog action must not hard-drop the piece');
+    canvas.focus();
+    for (const code of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space']) {
+      check(press(canvas, code), 'Paused gameplay keys must not be consumed');
+    }
+    check(JSON.stringify({ board: state.board, piece: state.piece, score: state.score }) === pausedState,
+      'Tabbing out of the non-modal pause dialog must not allow paused gameplay');
+    press(canvas, 'KeyP');
+    check(!state.paused && document.activeElement === canvas, 'P must resume from the board');
+    press(canvas, 'KeyP');
     startBtn.click();
     check(!state.paused && overlay.classList.contains('hidden'), 'Resume must hide the dialog');
     check(document.activeElement === canvas, 'Resume must return focus to the board');
@@ -73,6 +82,13 @@ function checkAccessibility() {
     startBtn.click();
     check(!state.over && document.activeElement === canvas, 'Restart must focus a fresh game');
     check(!pauseBtn.disabled, 'Restart must enable pausing again');
+    for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) {
+      const event = new KeyboardEvent('keydown', {
+        code: 'KeyP', [modifier]: true, bubbles: true, cancelable: true,
+      });
+      canvas.dispatchEvent(event);
+      check(!event.defaultPrevented && !state.paused, 'Browser shortcuts must remain available');
+    }
   });
 
   run('stats announce labelled changes, including hard drops, without frame-by-frame noise', () => {
