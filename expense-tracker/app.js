@@ -21,6 +21,7 @@
   let busy = false;
   let receiptEntryId = null;
   let previewUrl = null;
+  let pageActive = true;
   const dialog = get("receipt-dialog");
 
   function showError(message) {
@@ -288,6 +289,7 @@
       throw new Error("Receipt image does not match its saved metadata. Replace or remove the receipt; the expense is unchanged.");
     }
     await receipts.validateImage(file);
+    if (!pageActive || !dialog.open) return;
     previewUrl = URL.createObjectURL(file);
     get("receipt-preview").src = previewUrl;
     get("receipt-preview").alt = `Fictional receipt for ${entry.description}`;
@@ -335,7 +337,14 @@
     (button || description).focus();
     receiptEntryId = null;
   });
-  window.addEventListener("pagehide", releasePreview);
+  window.addEventListener("pagehide", () => {
+    pageActive = false;
+    releasePreview();
+  });
+  window.addEventListener("pageshow", event => {
+    pageActive = true;
+    if (event.persisted && dialog.open) runAction(showReceipt);
+  });
 
   for (const input of [monthFilter, categoryFilter]) {
     input.addEventListener("change", () => {
