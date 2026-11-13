@@ -2,6 +2,7 @@
 
 const SIZE = 4;
 const WIN_VALUE = 2048;
+const HISTORY_LIMIT = 100;
 const BEST_KEY = 'merge2048.best';
 
 const boardEl = document.getElementById('board');
@@ -100,6 +101,7 @@ function move(direction) {
   if (state.over || (state.won && !state.keepPlaying)) return;
 
   state.history.push({ grid: JSON.parse(JSON.stringify(state.grid)) });
+  if (state.history.length > HISTORY_LIMIT) state.history.shift();
 
   const result = moveGrid(state.grid, direction);
   state.grid = result.grid;
