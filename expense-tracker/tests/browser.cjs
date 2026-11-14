@@ -146,10 +146,10 @@ async function runBrowser(profile, origin) {
       const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
       await ExpenseReceipts.withWriteLock(async () => {
         await ExpenseReceipts.put("keyboard-image", blob);
-        localStorage.setItem(ExpenseModel.STORAGE_KEY, ExpenseModel.encode([{
-          id: "keyboard", description: "Fictional keyboard receipt", date: "2026-11-12", category: "Other", cents: 100,
+        localStorage.setItem(ExpenseModel.STORAGE_KEY, ExpenseModel.encode({ categories: ExpenseModel.DEFAULT_CATEGORIES, expenses: [{
+          id: "keyboard", description: "Fictional keyboard receipt", date: "2026-11-12", categoryId: "other", cents: 100,
           receipt: { id: "keyboard-image", name: "fictional.png", type: "image/png", size: blob.size }
-        }]));
+        }] }));
       });
     })()`);
     await navigate(`${origin}/expense-tracker/index.html`);
@@ -177,6 +177,64 @@ async function runBrowser(profile, origin) {
     await press(" ", "Space", 32);
     await wait('!document.getElementById("receipt-dialog").open && !document.getElementById("receipt-preview").hasAttribute("src")');
     console.log("PASS real keyboard Enter, Tab/Shift+Tab receipt controls, Escape, Space, and focus restoration");
+
+    const expectFocus = async id => {
+      if (!await evaluate(`document.activeElement.id === "${id}"`)) throw new Error(`Keyboard must reach ${id}.`);
+    };
+    await evaluate('document.getElementById("manage-category").focus()');
+    await press("Tab", "Tab", 9);
+    await expectFocus("category-name");
+    await send("Input.insertText", { text: "Keyboard category" });
+    await press("Tab", "Tab", 9);
+    await expectFocus("add-category");
+    await press("Enter", "Enter", 13);
+    await wait(`document.body.dataset.busy !== "true" &&
+      JSON.parse(localStorage.getItem(ExpenseModel.STORAGE_KEY)).categories.some(category => category.name === "Keyboard category")`);
+    await evaluate('document.getElementById("manage-category").focus()');
+    await press("End", "End", 35);
+    await press("Tab", "Tab", 9);
+    await expectFocus("category-name");
+    await press("a", "KeyA", 65, 2);
+    await send("Input.insertText", { text: "Renamed keyboard category" });
+    await press("Tab", "Tab", 9);
+    await press("Tab", "Tab", 9);
+    await expectFocus("rename-category");
+    await press(" ", "Space", 32);
+    await wait(`document.body.dataset.busy !== "true" &&
+      JSON.parse(localStorage.getItem(ExpenseModel.STORAGE_KEY)).categories.some(category => category.name === "Renamed keyboard category")`);
+    console.log("PASS real keyboard category selection, add and rename with Enter/Space");
+
+    const beforeView = await evaluate('localStorage.getItem(ExpenseModel.STORAGE_KEY)');
+    await evaluate(`document.querySelector('button[data-action="edit"]').click();
+      document.getElementById("description").value = "Keyboard retained draft";
+      document.getElementById("description-search").focus()`);
+    await send("Input.insertText", { text: "KEYBOARD" });
+    await wait('document.getElementById("view-status").textContent.includes("1 matching")');
+    await press("Tab", "Tab", 9);
+    await expectFocus("all-expenses");
+    await press("Tab", "Tab", 9);
+    await expectFocus("table-wrap");
+    await press("Tab", "Tab", 9);
+    for (const [field, key, code, number] of [
+      ["date", "Enter", "Enter", 13], ["description", " ", "Space", 32],
+      ["category", "Enter", "Enter", 13], ["amount", " ", "Space", 32]
+    ]) {
+      await expectFocus(`sort-${field}`);
+      await press(key, code, number);
+      if (!await evaluate(`document.getElementById("sort-${field}").closest("th").getAttribute("aria-sort") === "ascending"`)) {
+        throw new Error(`Keyboard sort for ${field} must expose its active ascending direction.`);
+      }
+      if (field !== "amount") await press("Tab", "Tab", 9);
+    }
+    await press("Enter", "Enter", 13);
+    if (!await evaluate(`document.getElementById("sort-amount").closest("th").getAttribute("aria-sort") === "descending" &&
+      document.getElementById("description").value === "Keyboard retained draft" && !document.getElementById("cancel").hidden`)) {
+      throw new Error("Repeated keyboard sort must reverse direction and preserve the expense draft.");
+    }
+    if (await evaluate('localStorage.getItem(ExpenseModel.STORAGE_KEY)') !== beforeView) {
+      throw new Error("Keyboard search/sort must not change saved records.");
+    }
+    console.log("PASS real keyboard description search, all sortable columns, direction reversal and draft preservation");
   } finally {
     clearTimeout(timer);
     browser.kill();

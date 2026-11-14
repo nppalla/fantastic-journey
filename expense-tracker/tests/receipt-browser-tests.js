@@ -47,6 +47,57 @@ async function checkReceipts(frame, check, load, idle) {
     }
   };
   const keys = () => storage("readonly", store => store.getAllKeys());
+  const png = await image("image/png");
+  const jpeg = await image("image/jpeg");
+
+  const v2 = JSON.stringify({ version: 2, expenses: [{
+    id: "v2-expense", description: "Fictional v2 receipt", date: "2026-11-12", category: "Meals", cents: 1234,
+    receipt: { id: "v2-image", name: "fictional.png", type: "image/png", size: png.size }
+  }] });
+  await storage("readwrite", store => store.add(png, "v2-image"));
+  localStorage.setItem(key, v2);
+  await load();
+  get("all-expenses").click();
+  await manage();
+  check(localStorage.getItem(key) === v2 && !get("receipt-preview").hidden,
+    "version-2 migration previews the existing receipt without rewriting metadata");
+  await close();
+  get("manage-category").value = "meals";
+  get("manage-category").dispatchEvent(new (win().Event)("change", { bubbles: true }));
+  get("category-name").value = "Lunch";
+  const migrationSet = win().Storage.prototype.setItem;
+  win().Storage.prototype.setItem = () => { throw new Error("Migration blocked"); };
+  await click("rename-category");
+  check(localStorage.getItem(key) === v2 && (await keys()).join() === "v2-image" &&
+    get("error").textContent.includes("Migration blocked"), "failed v2 migration keeps original receipt metadata and bytes");
+  win().Storage.prototype.setItem = migrationSet;
+  await click("rename-category");
+  check(JSON.parse(localStorage.getItem(key)).version === 3 && saved()[0].categoryId === "meals" &&
+    receipt().id === "v2-image" && (await keys()).join() === "v2-image",
+    "category rename migrates v2 data without altering its receipt reference or image");
+  get("description-search").value = "V2";
+  get("description-search").dispatchEvent(new (win().Event)("input", { bubbles: true }));
+  await click("sort-amount");
+  get("reassign-category").value = "other";
+  win().confirm = () => true;
+  await click("delete-category");
+  check(saved()[0].categoryId === "other" && receipt().id === "v2-image" &&
+    get("total").textContent === "$12.34" && (await keys()).join() === "v2-image",
+    "category reassignment through a searched/sorted view preserves receipt bytes, references and totals");
+  await load();
+  get("all-expenses").click();
+  await manage();
+  check(!get("receipt-preview").hidden && saved()[0].categoryId === "other",
+    "reassigned migrated receipt remains previewable after reload");
+  await close();
+  const corrupt = JSON.parse(localStorage.getItem(key));
+  corrupt.expenses[0].categoryId = "unknown";
+  const corruptRaw = JSON.stringify(corrupt);
+  localStorage.setItem(key, corruptRaw);
+  await load();
+  check(get("entry-fields").disabled && get("category-fields").disabled &&
+    localStorage.getItem(key) === corruptRaw && (await keys()).join() === "v2-image",
+    "unknown-category load never runs destructive receipt reconciliation");
 
   localStorage.setItem(key, JSON.stringify({ version: 1, expenses: [{
     id: "fictional-lunch", description: "Fictional lunch", date: "2026-11-12", category: "Meals", cents: 1234
@@ -60,8 +111,6 @@ async function checkReceipts(frame, check, load, idle) {
   check(get("receipt-dialog").open && get("receipt-preview").hidden && get("remove-receipt").disabled,
     "receipt dialog supports an expense without an attachment");
 
-  const png = await image("image/png");
-  const jpeg = await image("image/jpeg");
   const invalid = [
     file(["%PDF-1.0 fictional"], "pretend.png", "application/pdf"),
     file(["<svg></svg>"], "pretend.png", "image/png"),
@@ -97,7 +146,7 @@ async function checkReceipts(frame, check, load, idle) {
   await choose(file([png], "fictional.png", "image/png"));
   const originalReceipt = receipt();
   check(originalReceipt.type === "image/png" && originalReceipt.size === png.size &&
-    JSON.parse(localStorage.getItem(key)).version === 2, "attaching stores version-2 metadata without losing the expense");
+    JSON.parse(localStorage.getItem(key)).version === 3, "attaching stores version-3 metadata without losing the expense");
   const storedPng = await storage("readonly", store => store.get(originalReceipt.id));
   check(storedPng instanceof Blob && storedPng.size === png.size &&
     !localStorage.getItem(key).includes("base64"), "receipt bytes are binary IndexedDB blobs, not localStorage data");
@@ -241,7 +290,7 @@ async function checkReceipts(frame, check, load, idle) {
   const addMethod = win().IDBObjectStore.prototype.add;
   win().IDBObjectStore.prototype.add = function (...args) {
     const external = JSON.parse(localStorage.getItem(key));
-    external.expenses.push({ id: "other-tab", description: "Other tab", date: "2026-11-12", category: "Other", cents: 1 });
+    external.expenses.push({ id: "other-tab", description: "Other tab", date: "2026-11-12", categoryId: "other", cents: 1 });
     localStorage.setItem(key, JSON.stringify(external));
     return addMethod.apply(this, args);
   };

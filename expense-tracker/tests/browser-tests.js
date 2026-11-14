@@ -15,7 +15,7 @@
   const saved = () => JSON.parse(localStorage.getItem(key)).expenses;
   const rowButtons = action => [...get("expenses").querySelectorAll(`button[data-action="${action}"]`)];
   const change = (id, value) => {
-    get(id).value = value;
+    get(id).value = id === "category-filter" ? value.toLowerCase() : value;
     get(id).dispatchEvent(new win.Event("change", { bubbles: true }));
   };
   const idle = async () => {
@@ -38,7 +38,7 @@
   async function add(description, amount, category = "Supplies", date = get("date").value) {
     get("description").value = description;
     get("amount").value = amount;
-    get("category").value = category;
+    get("category").value = category.toLowerCase();
     get("date").value = date;
     get("expense-form").requestSubmit();
     await idle();
@@ -144,7 +144,7 @@
 
     const stale = localStorage.getItem(key);
     const external = JSON.parse(stale);
-    external.expenses.push({ id: "external", description: "Another tab", date: today, category: "Other", cents: 100 });
+    external.expenses.push({ id: "external", description: "Another tab", date: today, categoryId: "other", cents: 100 });
     localStorage.setItem(key, JSON.stringify(external));
     await add("Stale write", "7.00");
     check(get("error").textContent.includes("another tab") && saved().length === 6 &&
@@ -180,6 +180,7 @@
     check(doc.documentElement.scrollWidth <= 320 && get("table-wrap").scrollWidth > 0,
       "populated mobile table stays within its scroll region");
 
+    await checkCategoriesAndSearch(frame, check, load, idle);
     await checkReceipts(frame, check, load, idle);
 
     output.dataset.status = "passed";

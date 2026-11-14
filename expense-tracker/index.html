@@ -39,11 +39,6 @@
             <label for="category">Category</label>
             <select id="category" name="category" required>
               <option value="">Choose a category</option>
-              <option>Supplies</option>
-              <option>Travel</option>
-              <option>Meals</option>
-              <option>Software</option>
-              <option>Other</option>
             </select>
 
             <label for="amount">Amount (USD)</label>
@@ -55,6 +50,29 @@
             <div class="actions">
               <button id="save" type="submit" class="primary">Add expense</button>
               <button id="cancel" type="button" hidden>Cancel edit</button>
+            </div>
+          </fieldset>
+        </form>
+        <h2 class="category-heading" id="categories-title">Manage categories</h2>
+        <form id="category-form" aria-labelledby="categories-title">
+          <fieldset id="category-fields">
+            <legend class="sr-only">Category management</legend>
+            <label for="manage-category">Existing category</label>
+            <select id="manage-category" aria-describedby="category-help"></select>
+            <label for="category-name">Category name</label>
+            <input id="category-name" required maxlength="40" aria-describedby="category-help" autocomplete="off">
+            <small id="category-help">1 to 40 characters, ignoring surrounding spaces. Names must be unique, ignoring case.</small>
+            <div class="actions">
+              <button id="add-category" type="submit">Add category</button>
+              <button id="rename-category" type="submit">Rename selected</button>
+            </div>
+            <label class="category-heading" for="reassign-category">Reassign expenses before deletion</label>
+            <select id="reassign-category">
+              <option value="">Choose a replacement if in use</option>
+            </select>
+            <small id="category-usage" role="status"></small>
+            <div class="actions">
+              <button id="delete-category" type="button">Delete selected category</button>
             </div>
           </fieldset>
         </form>
@@ -71,15 +89,15 @@
             <label for="category-filter">Category</label>
             <select id="category-filter">
               <option value="">All categories</option>
-              <option>Supplies</option>
-              <option>Travel</option>
-              <option>Meals</option>
-              <option>Software</option>
-              <option>Other</option>
             </select>
+          </div>
+          <div>
+            <label for="description-search">Search descriptions</label>
+            <input id="description-search" type="search" autocomplete="off" aria-describedby="search-help">
           </div>
           <button id="all-expenses" type="button">Show all</button>
         </div>
+        <p id="search-help" class="hint">Search ignores case and combines with month and category. Select a column heading to sort; select it again to reverse direction.</p>
         <p class="hint">Starts with the current month. Clear the month or choose Show all to see every date.</p>
         <p class="hint">Save an expense first, then choose Attach receipt. One fictional PNG or JPEG
           per expense, up to 2 MiB (2,097,152 bytes).</p>
@@ -88,16 +106,22 @@
           <div><span>Filtered total</span><strong id="total">$0.00</strong></div>
           <div><span>Matching entries</span><strong id="count">0</strong></div>
         </div>
+        <p id="view-status" class="hint" role="status" aria-live="polite" aria-atomic="true"></p>
         <h3>Spending by category <span class="hint">(current filters)</span></h3>
         <ul id="breakdown" class="breakdown"></ul>
         <p id="empty">No expenses yet. Add your first expense to get started.</p>
 
         <div id="table-wrap" class="table-wrap" role="region" aria-label="Expense table" tabindex="0" hidden>
           <table>
-            <caption class="sr-only">Expenses matching the current filters, newest date first</caption>
+            <caption class="sr-only">Expenses matching the selected month, category and description search. Sort controls are in the column headings.</caption>
             <thead>
-              <tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th>
-                <th scope="col" class="money">Amount (USD)</th><th scope="col">Actions</th></tr>
+              <tr>
+                <th scope="col" aria-sort="descending"><button id="sort-date" type="button" data-sort="date">Date (descending)</button></th>
+                <th scope="col"><button id="sort-description" type="button" data-sort="description">Description</button></th>
+                <th scope="col"><button id="sort-category" type="button" data-sort="category">Category</button></th>
+                <th scope="col" class="money"><button id="sort-amount" type="button" data-sort="amount">Amount (USD)</button></th>
+                <th scope="col">Actions</th>
+              </tr>
             </thead>
             <tbody id="expenses"></tbody>
           </table>

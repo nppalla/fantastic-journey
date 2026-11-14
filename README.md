@@ -2,11 +2,11 @@
 
 Two small browser games and a browser-local business sample. They need no build step and no dependencies.
 
-| Game | Folder | Description |
+| Sample | Folder | Description |
 | --- | --- | --- |
 | Block Drop | [`block-drop/`](block-drop/) | Falling-blocks puzzle on a canvas |
 | Merge 2048 | [`merge-2048/`](merge-2048/) | Sliding-tile number puzzle |
-| Expense Tracker | [`expense-tracker/`](expense-tracker/) | Fictional expenses with local receipt images and CSV export |
+| Expense Tracker | [`expense-tracker/`](expense-tracker/) | Custom categories, searchable/sortable fictional expenses, local receipts and CSV |
 
 ## Run
 
@@ -18,4 +18,4 @@ npx serve .
 
 ## Issues
 
-Known defects are tracked in GitHub Issues. Each issue has a `game: ...` label and a category label such as `bug`, `performance`, `ui`, `accessibility`, or `documentation`.
+Known defects and enhancements are tracked in GitHub Issues. Game issues have a `game: ...` label and a category label such as `bug`, `performance`, `ui`, `accessibility`, or `documentation`.
