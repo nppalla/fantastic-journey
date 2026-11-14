@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Expense Tracker | Fantastic Journey</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="model.js" defer></script>
+  <script src="receipts.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <a href="../index.html">&larr; All samples</a>
+      <h1>Expense Tracker</h1>
+      <p>Small expenses, clearly tracked. All amounts are in USD.</p>
+      <p class="notice">Browser-local demo: data stays in this browser, not in a shared account.
+        Clearing site data removes it. Use fictional expenses and receipts only. Receipts are
+        unencrypted and local to this browser; CSV exports do not include receipt images.</p>
+    </header>
+
+    <noscript><p class="error">Enable JavaScript to use the expense tracker.</p></noscript>
+    <p id="error" class="error" role="alert" hidden></p>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <div class="layout">
+      <section class="panel" aria-labelledby="form-title">
+        <h2 id="form-title">Add expense</h2>
+        <form id="expense-form">
+          <fieldset id="entry-fields">
+            <legend class="sr-only">Expense details</legend>
+            <label for="description">Description</label>
+            <input id="description" name="description" required maxlength="120" autocomplete="off">
+
+            <label for="date">Date</label>
+            <input id="date" name="date" type="date" required min="1000-01-01" max="9999-12-31">
+
+            <label for="category">Category</label>
+            <select id="category" name="category" required>
+              <option value="">Choose a category</option>
+            </select>
+
+            <label for="amount">Amount (USD)</label>
+            <input id="amount" name="amount" type="text" inputmode="decimal"
+              required maxlength="9" pattern="[0-9]{1,6}(\.[0-9]{1,2})?"
+              aria-describedby="amount-help" placeholder="0.00">
+            <small id="amount-help">Enter 0.01 to 999999.99, with no commas and at most two decimal places.</small>
+
+            <div class="actions">
+              <button id="save" type="submit" class="primary">Add expense</button>
+              <button id="cancel" type="button" hidden>Cancel edit</button>
+            </div>
+          </fieldset>
+        </form>
+        <details class="category-manager">
+          <summary>Manage categories</summary>
+          <p id="category-help" class="hint">Names are trimmed, 1-40 characters, and unique ignoring case.
+            Renaming keeps existing expenses linked. Deleting an in-use category requires reassignment.</p>
+          <form id="category-form">
+            <fieldset id="category-fields">
+              <legend class="sr-only">Add, rename, or delete a category</legend>
+              <label for="managed-category">Category to manage</label>
+              <select id="managed-category"><option value="">New category</option></select>
+              <label for="category-name">Category name</label>
+              <input id="category-name" required maxlength="40" autocomplete="off" aria-describedby="category-help">
+              <button id="save-category" type="submit">Add category</button>
+              <p id="category-usage" class="hint" role="status"></p>
+              <label for="replacement-category">Reassign expenses and draft to</label>
+              <select id="replacement-category" aria-describedby="category-usage">
+                <option value="">Choose a replacement</option>
+              </select>
+              <button id="delete-category" type="button" disabled>Delete category</button>
+            </fieldset>
+          </form>
+        </details>
+      </section>
+
+      <section class="panel ledger" aria-labelledby="ledger-title">
+        <h2 id="ledger-title">Your expenses</h2>
+        <div class="filters">
+          <div>
+            <label for="month-filter">Month</label>
+            <input id="month-filter" type="month" min="1000-01" max="9999-12">
+          </div>
+          <div>
+            <label for="category-filter">Category</label>
+            <select id="category-filter">
+              <option value="">All categories</option>
+            </select>
+          </div>
+          <div>
+            <label for="description-search">Search descriptions</label>
+            <input id="description-search" type="search" autocomplete="off">
+          </div>
+          <button id="all-expenses" type="button">Show all</button>
+        </div>
+        <p class="hint">Starts with the current month. Clear the month or choose Show all to see every date.</p>
+        <p class="hint">Save an expense first, then choose Attach receipt. One fictional PNG or JPEG
+          per expense, up to 2 MiB (2,097,152 bytes).</p>
+        <p id="view-status" class="hint" role="status" aria-live="polite" aria-atomic="true"></p>
+
+        <div class="summary">
+          <div><span>Filtered total</span><strong id="total">$0.00</strong></div>
+          <div><span>Matching entries</span><strong id="count">0</strong></div>
+        </div>
+        <h3>Spending by category <span class="hint">(current filters)</span></h3>
+        <ul id="breakdown" class="breakdown"></ul>
+        <p id="empty">No expenses yet. Add your first expense to get started.</p>
+
+        <div id="table-wrap" class="table-wrap" role="region" aria-label="Expense table" tabindex="0" hidden>
+          <table>
+            <caption class="sr-only">Expenses matching the current filters and description search</caption>
+            <thead>
+              <tr><th scope="col" aria-sort="descending"><button type="button" data-sort="date">Date (descending)</button></th>
+                <th scope="col" aria-sort="none"><button type="button" data-sort="description">Description</button></th>
+                <th scope="col" aria-sort="none"><button type="button" data-sort="category">Category</button></th>
+                <th scope="col" class="money" aria-sort="none"><button type="button" data-sort="cents">Amount (USD)</button></th>
+                <th scope="col">Actions</th></tr>
+            </thead>
+            <tbody id="expenses"></tbody>
+          </table>
+        </div>
+        <div class="actions export-actions">
+          <button id="export-filtered" type="button" disabled>Export filtered CSV</button>
+          <button id="export-all" type="button" disabled>Export all CSV</button>
+        </div>
+      </section>
+    </div>
+  </main>
+  <dialog id="receipt-dialog" aria-labelledby="receipt-title" aria-describedby="receipt-help">
+    <h2 id="receipt-title">Receipt</h2>
+    <p id="receipt-help">Use fictional images only. PNG or JPEG, up to 2 MiB (2,097,152 bytes).
+      Images stay unencrypted in this browser and are not included in CSV exports.</p>
+    <p id="receipt-error" class="error" role="alert" hidden></p>
+    <p id="receipt-details" role="status"></p>
+    <img id="receipt-preview" hidden alt="">
+    <fieldset id="receipt-fields">
+      <legend class="sr-only">Manage receipt</legend>
+      <label for="receipt-file">Attach or replace receipt</label>
+      <input id="receipt-file" type="file" accept="image/png,image/jpeg" aria-describedby="receipt-help">
+      <div class="actions">
+        <button id="save-receipt" type="button">Save receipt</button>
+        <button id="remove-receipt" type="button">Remove receipt</button>
+      </div>
+    </fieldset>
+    <div class="actions">
+      <button id="close-receipt" type="button" autofocus>Close preview</button>
+    </div>
+  </dialog>
+</body>
+</html>
