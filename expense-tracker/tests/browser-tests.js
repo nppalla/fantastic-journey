@@ -180,6 +180,7 @@
     check(doc.documentElement.scrollWidth <= 320 && get("table-wrap").scrollWidth > 0,
       "populated mobile table stays within its scroll region");
 
+    await checkEnhancements(frame, check, load, idle);
     await checkReceipts(frame, check, load, idle);
 
     output.dataset.status = "passed";

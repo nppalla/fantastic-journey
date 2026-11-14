@@ -146,15 +146,50 @@ async function runBrowser(profile, origin) {
       const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
       await ExpenseReceipts.withWriteLock(async () => {
         await ExpenseReceipts.put("keyboard-image", blob);
-        localStorage.setItem(ExpenseModel.STORAGE_KEY, ExpenseModel.encode([{
+        localStorage.setItem(ExpenseModel.STORAGE_KEY, ExpenseModel.encode({ categories: ExpenseModel.DEFAULT_CATEGORIES, expenses: [{
           id: "keyboard", description: "Fictional keyboard receipt", date: "2026-11-12", category: "Other", cents: 100,
           receipt: { id: "keyboard-image", name: "fictional.png", type: "image/png", size: blob.size }
-        }]));
+        }, {
+          id: "small", description: "Fictional stationery", date: "2026-11-11", category: "Supplies", cents: 30
+        }, {
+          id: "large", description: "Fictional train", date: "2026-11-13", category: "Travel", cents: 1000
+        }] }));
       });
     })()`);
     await navigate(`${origin}/expense-tracker/index.html`);
     await wait('document.body.dataset.busy !== "true"');
-    await evaluate('document.getElementById("all-expenses").click(); document.querySelector(\'button[data-action="receipt"]\').focus()');
+    await evaluate('document.getElementById("all-expenses").click(); document.getElementById("description-search").focus()');
+    await send("Input.insertText", { text: "KEYBOARD receipt" });
+    await wait('document.getElementById("count").textContent === "1"');
+    await press("Tab", "Tab", 9);
+    if (!await evaluate('document.activeElement.id === "all-expenses"')) {
+      throw new Error("Tab from description search must reach Show all.");
+    }
+    await press("Enter", "Enter", 13);
+    await wait('document.getElementById("count").textContent === "3" && !document.getElementById("description-search").value');
+    for (const key of ["date", "description", "category", "cents"]) {
+      await evaluate(`document.querySelector('button[data-sort="${key}"]').focus()`);
+      await press("Enter", "Enter", 13);
+      if (!await evaluate(`document.querySelector('button[data-sort="${key}"]').parentElement.getAttribute("aria-sort") === "ascending"`)) {
+        throw new Error(`Keyboard Enter must sort ${key} ascending.`);
+      }
+      await press(" ", "Space", 32);
+      if (!await evaluate(`document.querySelector('button[data-sort="${key}"]').parentElement.getAttribute("aria-sort") === "descending"`)) {
+        throw new Error(`Keyboard Space must sort ${key} descending.`);
+      }
+    }
+    if (!await evaluate(`[...document.querySelectorAll('#expenses tr')].map(row => row.querySelector("button").dataset.id).join() === "large,keyboard,small"`)) {
+      throw new Error("Keyboard amount sorting must compare integer cents.");
+    }
+    await evaluate('document.querySelector(".category-manager summary").focus()');
+    await press("Enter", "Enter", 13);
+    await evaluate('document.getElementById("category-name").focus()');
+    await send("Input.insertText", { text: "Keyboard category" });
+    await press("Enter", "Enter", 13);
+    await wait(`document.body.dataset.busy !== "true" &&
+      [...document.getElementById("category").options].some(option => option.text === "Keyboard category")`);
+    console.log("PASS real keyboard search, Show all, all sortable columns in both directions, and category creation");
+    await evaluate('document.querySelector(\'button[data-action="receipt"][data-id="keyboard"]\').focus()');
     await press("Enter", "Enter", 13);
     await wait('document.getElementById("receipt-dialog").open && document.body.dataset.busy !== "true"');
     if (!await evaluate('!document.getElementById("receipt-preview").hidden && document.activeElement.id === "close-receipt"')) {

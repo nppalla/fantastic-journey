@@ -16,8 +16,26 @@ serving the folder is recommended for consistent persistence.
 - Record a description (up to 120 characters), date, category, and USD amount.
 - Enter positive amounts from 0.01 to 999999.99 with at most two decimal places.
   Amounts are stored and summed as integer cents, not floating-point dollars.
-- Filter by month and category. The initial view shows the current month; Show all
-  clears both filters. Totals and category breakdowns reflect the current filters.
+- Add and rename categories through **Manage categories**. Names are trimmed to
+  1-40 characters (the browser's `maxlength`/JavaScript string length), with
+  case-insensitive duplicate detection. Categories use stable IDs; renaming updates
+  labels without changing expense records or totals.
+- Choose a replacement explicitly before deleting a category used by expenses or
+  the current form draft, then confirm. Reassignment keeps expense IDs, amounts,
+  and receipts, and updates the draft's category without discarding its other fields.
+  Unused categories can be deleted without reassignment; keep at least one category.
+- Filter by month and category and search descriptions using a trimmed,
+  case-insensitive substring. The initial view shows the current month; **Show all**
+  clears all three. Totals, breakdowns, matching counts, and empty states use the
+  same selection as the ledger.
+- Sort by **Date**, **Description**, **Category**, or **Amount (USD)** with the
+  column-header buttons (Enter or Space). Selecting a different column starts
+  ascending; selecting it again reverses direction. Date starts descending.
+  Amounts compare integer cents; descriptions and category names compare
+  lowercased text in JavaScript lexicographic order. Equal values always use ascending expense
+  ID as a deterministic tie-breaker, regardless of direction or input order.
+  Active direction and matching count are announced. View changes do not save
+  records or reset in-progress edits.
 - Save validated, versioned data in `localStorage`. Failed saves retain the form
   draft and do not change the in-memory ledger. Stale-tab writes are rejected;
   this is not a multi-user database or an atomic cross-tab synchronization system.
@@ -42,18 +60,33 @@ This is a **fictional-data demo, not an accounting system**. Data is unencrypted
 not shared across devices, and disappears when site data is cleared. CSV is an
 export, not a restorable backup; import is not implemented. Receipt images are
 **not included in CSV**. Exporting a selection with receipts asks for confirmation;
-canceling does not download anything. CSV rows are ordered by newest date first,
-then description. Keep separate fictional-image copies if you want to retain them.
+canceling does not download anything. **Filtered CSV has exactly the visible rows
+in their selected sort order. All CSV ignores filters/search but uses the same
+selected column, direction, and ascending-ID tie rule.** Category names use their
+current labels, including renames. Keep separate fictional-image copies if you want to retain them.
 No real receipts, OCR, cloud uploads, PDFs, tax calculation, authentication, or
 financial/accounting integrations are included.
 
-## Receipt persistence
+## Categories and receipt persistence
 
 Expense metadata stays in `localStorage` under the original
-`fantastic-journey.expenses.v1` key. The version-2 format adds optional receipt
-metadata (identifier, filename, MIME type, byte size). Version-1 expenses are read
-without data loss and upgraded on their next save. Do not use an older version of
-the app to edit version-2 data.
+`fantastic-journey.expenses.v1` key. **Version 3** stores a category list
+(`id`, `name`) alongside expenses whose `category` is a stable category ID.
+Expenses can also contain receipt metadata (identifier, filename, MIME type,
+byte size). Version-1 expenses and version-2 expenses with receipts are read
+without discarding records or images and upgraded on the next successful write.
+Loading, searching, filtering, and sorting do not rewrite legacy storage. The
+five original names become their default IDs, so existing category references
+stay valid even after labels are renamed. New categories receive opaque IDs.
+Do not use an older app to edit version-3 data.
+
+Categories and expense reassignments are committed together in one localStorage
+write under the same Web Lock as receipt changes. A failed write keeps the
+previous categories, records, receipt references, and form drafts unchanged.
+Unknown versions, unknown fields, invalid or duplicate category IDs/names, and
+expenses with unknown category references disable editing instead of silently
+dropping or reclassifying data. Receipt cleanup never runs when saved metadata
+cannot be validated.
 
 Image bytes are stored as binary Blobs in the `images` object store in the
 `fantastic-journey.receipts` IndexedDB database, never base64 in localStorage.
@@ -96,6 +129,12 @@ node --test expense-tracker/tests/model.test.cjs
 node expense-tracker/tests/browser.cjs
 ```
 
+The checks cover version-1/version-2 migration, category renaming and explicit
+reassignment, duplicates and length bounds, failed writes, reloads, composed search,
+all sort columns/directions and ties, exact CSV order, retained drafts, and receipt
+validation/lifecycle/storage failures. Real keyboard checks exercise search,
+sorting, category creation, and receipt preview controls.
+
 The browser checks also require Chromium (`chromium` on PATH, or set
 `CHROMIUM_BIN`). They use an isolated temporary browser profile and a local server;
 they do not touch your normal browser data. There are no test package dependencies.
@@ -106,7 +145,7 @@ they do not touch your normal browser data. There are no test package dependenci
 | --- | --- |
 | `index.html` | Accessible form, filters, summary, and ledger |
 | `style.css` | Responsive layout and theme |
-| `model.js` | Validation, integer-cent accounting, persistence format, and CSV |
+| `model.js` | Stable categories, validation, search/sort, integer-cent accounting, versioned persistence, and CSV |
 | `receipts.js` | Content validation, binary IndexedDB storage, locking, and orphan cleanup |
 | `app.js` | Browser interactions, storage, and rendering |
 | `tests/` | Model and real-browser workflow checks |

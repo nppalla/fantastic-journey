@@ -11,12 +11,17 @@
   const amount = get("amount");
   const monthFilter = get("month-filter");
   const categoryFilter = get("category-filter");
+  const search = get("description-search");
+  const managedCategory = get("managed-category");
   const error = get("error");
   const status = get("status");
   const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   let entries = [];
+  let categories = model.decode(null).categories;
+  let sortKey = "date";
+  let sortDirection = "descending";
   let editingId = null;
   let busy = false;
   let receiptEntryId = null;
@@ -43,6 +48,7 @@
     busy = value;
     document.body.dataset.busy = String(value);
     get("entry-fields").disabled = value;
+    get("category-fields").disabled = value;
     get("receipt-fields").disabled = value;
     get("close-receipt").setAttribute("aria-disabled", String(value));
     get("remove-receipt").disabled = !entries.find(entry => entry.id === receiptEntryId)?.receipt;
@@ -74,12 +80,49 @@
   }
 
   function visibleEntries() {
-    return model.filter(entries, monthFilter.value, categoryFilter.value);
+    return model.filter(entries, monthFilter.value, categoryFilter.value, search.value,
+      sortKey, sortDirection, categories);
+  }
+
+  function state() {
+    return { categories, expenses: entries };
+  }
+
+  function fillCategories(select, placeholder, options = categories) {
+    const selected = select.value;
+    select.replaceChildren(new Option(placeholder, ""), ...options.map(item => new Option(item.name, item.id)));
+    select.value = options.some(item => item.id === selected) ? selected : "";
+  }
+
+  function renderCategoryManager() {
+    const id = managedCategory.value;
+    fillCategories(get("replacement-category"), "Choose a replacement", categories.filter(item => item.id !== id));
+    get("delete-category").disabled = !id;
+    get("save-category").textContent = id ? "Rename category" : "Add category";
+    get("category-usage").textContent = id
+      ? `${entries.filter(entry => entry.category === id).length} expense(s) use this category. Choose a replacement before deleting if used by an expense or the current draft.`
+      : "Select a category to rename or delete, or enter a new name to add one.";
+  }
+
+  function renderCategories() {
+    fillCategories(category, "Choose a category");
+    fillCategories(categoryFilter, "All categories");
+    fillCategories(managedCategory, "New category");
+    renderCategoryManager();
   }
 
   function render() {
     const visible = visibleEntries();
-    const summary = model.summarize(visible);
+    const summary = model.summarize(visible, categories);
+    const labels = { date: "Date", description: "Description", category: "Category", cents: "Amount (USD)" };
+    get("view-status").textContent = `${summary.count} matching entries. Sorted by ${labels[sortKey]}, ${sortDirection}.`;
+    for (const button of document.querySelectorAll("button[data-sort]")) {
+      const active = button.dataset.sort === sortKey;
+      button.parentElement.setAttribute("aria-sort", active ? sortDirection : "none");
+      button.textContent = `${labels[button.dataset.sort]}${active ? ` (${sortDirection})` : ""}`;
+      button.setAttribute("aria-label", `Sort by ${labels[button.dataset.sort]}, ${active && sortDirection === "ascending" ? "descending" : "ascending"}`);
+    }
+    renderCategoryManager();
     get("total").textContent = money.format(summary.cents / 100);
     get("count").textContent = String(summary.count);
     get("breakdown").replaceChildren(...summary.categories.filter(item => item.cents > 0).map(item => {
@@ -89,14 +132,14 @@
     }));
     get("empty").hidden = visible.length > 0;
     get("empty").textContent = entries.length
-      ? "No expenses match these filters. Try another month or choose Show all."
+      ? "No expenses match these filters or search. Change them or choose Show all."
       : "No expenses yet. Add your first expense to get started.";
     get("table-wrap").hidden = visible.length === 0;
     get("export-filtered").disabled = visible.length === 0;
     get("export-all").disabled = entries.length === 0;
     get("expenses").replaceChildren(...visible.map(entry => {
       const row = document.createElement("tr");
-      for (const value of [entry.date, entry.description, entry.category, money.format(entry.cents / 100)]) {
+      for (const value of [entry.date, entry.description, model.categoryName(categories, entry.category), money.format(entry.cents / 100)]) {
         const cell = document.createElement("td");
         cell.textContent = value;
         row.append(cell);
@@ -121,10 +164,10 @@
     }));
   }
 
-  function persist(next) {
+  function persist(next, nextCategories) {
     let serialized;
     try {
-      serialized = model.encode(next);
+      serialized = model.encode({ categories: nextCategories, expenses: next });
     } catch (cause) {
       showError(cause.message);
       return false;
@@ -132,7 +175,7 @@
     try {
       // Refuse stale writes rather than silently overwriting changes from another tab.
       const stored = model.decode(localStorage.getItem(model.STORAGE_KEY));
-      if (model.encode(stored) !== model.encode(entries)) {
+      if (model.encode(stored) !== model.encode(state())) {
         showError("Expenses changed in another tab. Reload this page before saving; your draft is still in the form.");
         return false;
       }
@@ -142,14 +185,15 @@
       return false;
     }
     entries = next;
+    categories = nextCategories;
     clearError();
     return true;
   }
 
-  async function commit(next, attachment = null) {
-    model.encode(next);
+  async function commit(next, attachment = null, nextCategories = categories) {
+    model.encode({ categories: nextCategories, expenses: next });
     return receipts.withWriteLock(async () => {
-      if (model.encode(model.decode(localStorage.getItem(model.STORAGE_KEY))) !== model.encode(entries)) {
+      if (model.encode(model.decode(localStorage.getItem(model.STORAGE_KEY))) !== model.encode(state())) {
         showError("Expenses changed in another tab. Reload before saving; your draft and existing receipt are unchanged.");
         return false;
       }
@@ -162,7 +206,7 @@
           return false;
         }
       }
-      if (!persist(next)) {
+      if (!persist(next, nextCategories)) {
         if (attachment) {
           try {
             await receipts.remove([attachment.id]);
@@ -205,7 +249,7 @@
         date: date.value,
         category: category.value,
         cents: model.parseAmount(amount.value)
-      });
+      }, categories);
     } catch (cause) {
       showError(cause.message);
       return;
@@ -226,6 +270,52 @@
     clearError();
     status.textContent = "Edit cancelled. No changes saved.";
     description.focus();
+  });
+
+  managedCategory.addEventListener("change", () => {
+    get("category-name").value = managedCategory.value ? model.categoryName(categories, managedCategory.value) : "";
+    renderCategoryManager();
+  });
+
+  get("category-form").addEventListener("submit", event => {
+    event.preventDefault();
+    if (busy) return;
+    runAction(async () => {
+      const id = managedCategory.value;
+      const next = id ? model.renameCategory(state(), id, get("category-name").value) :
+        model.addCategory(state(), `category-${crypto.randomUUID()}`, get("category-name").value);
+      if (!await commit(next.expenses, null, next.categories)) return;
+      renderCategories();
+      get("category-name").value = id ? model.categoryName(categories, id) : "";
+      render();
+      status.textContent = `Category ${id ? "renamed" : "added"}. Existing expense totals are unchanged.`;
+    }).then(() => get("category-name").focus());
+  });
+
+  get("delete-category").addEventListener("click", () => {
+    if (busy) return;
+    const id = managedCategory.value;
+    const replacement = get("replacement-category").value;
+    let next;
+    try {
+      if (category.value === id && !replacement) {
+        throw new Error("Choose a replacement for the current expense draft before deleting its category.");
+      }
+      next = model.deleteCategory(state(), id, replacement);
+    } catch (cause) {
+      showError(cause.message);
+      return;
+    }
+    if (!window.confirm(`Delete "${model.categoryName(categories, id)}"${replacement ? ` and reassign to "${model.categoryName(categories, replacement)}"` : ""}? This cannot be undone.`)) return;
+    runAction(async () => {
+      if (!await commit(next.expenses, null, next.categories)) return;
+      if (category.value === id) category.value = replacement;
+      if (categoryFilter.value === id) categoryFilter.value = replacement;
+      renderCategories();
+      get("category-name").value = "";
+      render();
+      status.textContent = "Category deleted. Expenses and their receipts were kept; financial totals are unchanged.";
+    }).then(() => managedCategory.focus());
   });
 
   get("expenses").addEventListener("click", event => {
@@ -352,21 +442,30 @@
       status.textContent = `${visibleEntries().length} expenses match the current filters.`;
     });
   }
+  search.addEventListener("input", render);
+  for (const button of document.querySelectorAll("button[data-sort]")) {
+    button.addEventListener("click", () => {
+      sortDirection = sortKey === button.dataset.sort && sortDirection === "ascending" ? "descending" : "ascending";
+      sortKey = button.dataset.sort;
+      render();
+    });
+  }
 
   get("all-expenses").addEventListener("click", () => {
     monthFilter.value = "";
     categoryFilter.value = "";
+    search.value = "";
     render();
     status.textContent = `Showing all ${entries.length} expenses.`;
   });
 
   function downloadCsv(all) {
-    const selected = model.filter(all ? entries : visibleEntries());
+    const selected = all ? model.sort(entries, sortKey, sortDirection, categories) : visibleEntries();
     if (selected.some(entry => entry.receipt) &&
         !window.confirm("CSV does not include receipt images. Continue exporting expense metadata only?")) return;
     let url;
     try {
-      const blob = new Blob([model.csv(selected)], { type: "text/csv;charset=utf-8" });
+      const blob = new Blob([model.csv(selected, categories)], { type: "text/csv;charset=utf-8" });
       url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -393,17 +492,21 @@
   resetForm();
   monthFilter.value = today.slice(0, 7);
   try {
-    entries = model.decode(localStorage.getItem(model.STORAGE_KEY));
+    const saved = model.decode(localStorage.getItem(model.STORAGE_KEY));
+    entries = saved.expenses;
+    categories = saved.categories;
   } catch (cause) {
     get("entry-fields").disabled = true;
+    get("category-fields").disabled = true;
     showError(`Could not load saved expenses (${cause.message}). Editing is disabled to protect existing data. Check browser storage access and reload. See the README for recovery steps.`);
     get("empty").textContent = "Expenses could not be loaded.";
     return;
   }
+  renderCategories();
   render();
   runAction(async () => {
     const missing = await receipts.withWriteLock(() =>
-      receipts.reconcile(model.decode(localStorage.getItem(model.STORAGE_KEY))));
+      receipts.reconcile(model.decode(localStorage.getItem(model.STORAGE_KEY)).expenses));
     if (missing.length) {
       showError(`${missing.length} receipt image(s) are missing. Use Manage receipt to replace or remove them; expenses have been kept.`);
     }

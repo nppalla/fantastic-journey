@@ -97,7 +97,7 @@ async function checkReceipts(frame, check, load, idle) {
   await choose(file([png], "fictional.png", "image/png"));
   const originalReceipt = receipt();
   check(originalReceipt.type === "image/png" && originalReceipt.size === png.size &&
-    JSON.parse(localStorage.getItem(key)).version === 2, "attaching stores version-2 metadata without losing the expense");
+    JSON.parse(localStorage.getItem(key)).version === 3, "attaching stores version-3 metadata without losing the expense");
   const storedPng = await storage("readonly", store => store.get(originalReceipt.id));
   check(storedPng instanceof Blob && storedPng.size === png.size &&
     !localStorage.getItem(key).includes("base64"), "receipt bytes are binary IndexedDB blobs, not localStorage data");

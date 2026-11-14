@@ -39,11 +39,6 @@
             <label for="category">Category</label>
             <select id="category" name="category" required>
               <option value="">Choose a category</option>
-              <option>Supplies</option>
-              <option>Travel</option>
-              <option>Meals</option>
-              <option>Software</option>
-              <option>Other</option>
             </select>
 
             <label for="amount">Amount (USD)</label>
@@ -58,6 +53,27 @@
             </div>
           </fieldset>
         </form>
+        <details class="category-manager">
+          <summary>Manage categories</summary>
+          <p id="category-help" class="hint">Names are trimmed, 1-40 characters, and unique ignoring case.
+            Renaming keeps existing expenses linked. Deleting an in-use category requires reassignment.</p>
+          <form id="category-form">
+            <fieldset id="category-fields">
+              <legend class="sr-only">Add, rename, or delete a category</legend>
+              <label for="managed-category">Category to manage</label>
+              <select id="managed-category"><option value="">New category</option></select>
+              <label for="category-name">Category name</label>
+              <input id="category-name" required maxlength="40" autocomplete="off" aria-describedby="category-help">
+              <button id="save-category" type="submit">Add category</button>
+              <p id="category-usage" class="hint" role="status"></p>
+              <label for="replacement-category">Reassign expenses and draft to</label>
+              <select id="replacement-category" aria-describedby="category-usage">
+                <option value="">Choose a replacement</option>
+              </select>
+              <button id="delete-category" type="button" disabled>Delete category</button>
+            </fieldset>
+          </form>
+        </details>
       </section>
 
       <section class="panel ledger" aria-labelledby="ledger-title">
@@ -71,18 +87,18 @@
             <label for="category-filter">Category</label>
             <select id="category-filter">
               <option value="">All categories</option>
-              <option>Supplies</option>
-              <option>Travel</option>
-              <option>Meals</option>
-              <option>Software</option>
-              <option>Other</option>
             </select>
+          </div>
+          <div>
+            <label for="description-search">Search descriptions</label>
+            <input id="description-search" type="search" autocomplete="off">
           </div>
           <button id="all-expenses" type="button">Show all</button>
         </div>
         <p class="hint">Starts with the current month. Clear the month or choose Show all to see every date.</p>
         <p class="hint">Save an expense first, then choose Attach receipt. One fictional PNG or JPEG
           per expense, up to 2 MiB (2,097,152 bytes).</p>
+        <p id="view-status" class="hint" role="status" aria-live="polite" aria-atomic="true"></p>
 
         <div class="summary">
           <div><span>Filtered total</span><strong id="total">$0.00</strong></div>
@@ -94,10 +110,13 @@
 
         <div id="table-wrap" class="table-wrap" role="region" aria-label="Expense table" tabindex="0" hidden>
           <table>
-            <caption class="sr-only">Expenses matching the current filters, newest date first</caption>
+            <caption class="sr-only">Expenses matching the current filters and description search</caption>
             <thead>
-              <tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th>
-                <th scope="col" class="money">Amount (USD)</th><th scope="col">Actions</th></tr>
+              <tr><th scope="col" aria-sort="descending"><button type="button" data-sort="date">Date (descending)</button></th>
+                <th scope="col" aria-sort="none"><button type="button" data-sort="description">Description</button></th>
+                <th scope="col" aria-sort="none"><button type="button" data-sort="category">Category</button></th>
+                <th scope="col" class="money" aria-sort="none"><button type="button" data-sort="cents">Amount (USD)</button></th>
+                <th scope="col">Actions</th></tr>
             </thead>
             <tbody id="expenses"></tbody>
           </table>
