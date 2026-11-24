@@ -42,6 +42,10 @@ Run the game-over regression tests from the repository root with Node.js 18 or l
 node --test merge-2048/game.test.js
 ```
 
+The tests cover all empty-cell and adjacent-pair positions, diagonal-only
+matches, keyboard play after the final cell fills, game-over messaging and
+best-score storage, blocked input after game over, and starting again with Try again.
+
 ## Files
 
 | File | Purpose |
