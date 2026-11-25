@@ -93,7 +93,7 @@ function isGameOver() {
 }
 
 function hasWon() {
-  return state.grid.some((row) => row.some((value) => value > WIN_VALUE));
+  return state.grid.some((row) => row.some((value) => value >= WIN_VALUE));
 }
 
 function move(direction) {
